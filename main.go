@@ -77,9 +77,9 @@ const (
 	pluginID   = "cpa-freetier-plugin"
 
 	// OpenCode Endpoints
-	opencodeChatURL      = "https://opencode.ai/inference/v1/chat/completions"
-	opencodeResponsesURL = "https://opencode.ai/inference/v1/responses"
-	opencodeClientUA     = "opencode/1.19.2"
+	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
+	opencodeResponsesURL = "https://opencode.ai/inference/openai/v1/responses"
+	opencodeClientUA     = "opencode/1.19.2 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 
 	// MiMo Endpoints
 	mimoChatURL      = "https://api.xiaomimimo.com/api/free-ai/openai/chat"
