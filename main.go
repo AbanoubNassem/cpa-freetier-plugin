@@ -289,7 +289,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 			"schema_version": 1,
 			"metadata": map[string]any{
 				"Name":             pluginID,
-				"Version":          "1.2.0",
+				"Version":          "1.2.1",
 				"Author":           "tsaQB",
 				"GitHubRepository": "https://github.com/tsaQB/cpa-freetier-plugin",
 				"ConfigFields":     []any{},
