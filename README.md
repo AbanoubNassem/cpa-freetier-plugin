@@ -21,6 +21,17 @@ A native dynamic C ABI plugin (`.so`) for **[CLIProxyAPI](https://github.com/rou
 
 ## 📋 Active Models
 
+### OpenCode Zen (Zero-Key)
+| Model ID | Upstream | Notes |
+| :--- | :--- | :--- |
+| `glm-5.3-flash-free` | OpenCode | Flagship multimodal GLM 5.3 Flash (200k/1M context) |
+| `big-pickle` | OpenCode | Frontier deliberate reasoning model |
+| `deepseek-v4.1-flash-free` | OpenCode | DeepSeek V4.1 Flash reasoning specialist |
+| `space-bunny-free` | OpenCode | 1M context ultra-long frontier model |
+| `cat-jam-free` | OpenCode | Coding & agentic text reasoning model |
+| `nemotron-3.5-lightning-free` | OpenCode | Nemotron 3.5 lightning-fast code helper |
+
+### Kilo AI Free Tier
 | Model ID | Upstream | Notes |
 | :--- | :--- | :--- |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | Kilo AI | 550B flagship reasoning model |

@@ -65,6 +65,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -75,10 +76,10 @@ const (
 	abiVersion = 1
 	pluginID   = "cpa-freetier-plugin"
 
-	// OpenCode Zen Endpoints
-	opencodeChatURL      = "https://opencode.ai/zen/v1/chat/completions"
-	opencodeResponsesURL = "https://opencode.ai/zen/v1/responses"
-	opencodeClientUA     = "opencode/1.18.31"
+	// OpenCode Endpoints
+	opencodeChatURL      = "https://opencode.ai/inference/v1/chat/completions"
+	opencodeResponsesURL = "https://opencode.ai/inference/v1/responses"
+	opencodeClientUA     = "opencode/1.19.2"
 
 	// MiMo Endpoints
 	mimoChatURL      = "https://api.xiaomimimo.com/api/free-ai/openai/chat"
@@ -95,6 +96,7 @@ var (
 	httpClient = &http.Client{
 		Timeout: 5 * time.Minute,
 		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 20,
 			IdleConnTimeout:     90 * time.Second,
@@ -105,8 +107,12 @@ var (
 	mimoToken   string
 	mimoExpires time.Time
 
-	sessionMu      sync.Mutex
-	sessionCache   = make(map[string]sessionEntry)
+	sessionMu    sync.Mutex
+	sessionCache = make(map[string]sessionEntry)
+
+	ulidMu       sync.Mutex
+	lastUlidTime int64
+	ulidCounter  int64
 )
 
 type sessionEntry struct {
@@ -114,7 +120,14 @@ type sessionEntry struct {
 	lastUsed  time.Time
 }
 
-var openCodeModels = map[string]bool{}
+var openCodeModels = map[string]bool{
+	"glm-5.3-flash-free":       true,
+	"big-pickle":               true,
+	"deepseek-v4.1-flash-free": true,
+	"space-bunny-free":         true,
+	"cat-jam-free":             true,
+	"nemotron-3.5-lightning-free": true,
+}
 
 var mimoModels = map[string]bool{}
 
@@ -350,6 +363,14 @@ func listModels() []map[string]any {
 	}
 
 	items := []modelDef{
+		// OpenCode Free Models (Zero-Key)
+		{"glm-5.3-flash-free", "GLM 5.3 Flash Free (OpenCode)", 200000, 32768, true},
+		{"big-pickle", "Big Pickle Free (OpenCode)", 200000, 32000, true},
+		{"deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free (OpenCode)", 1000000, 384000, true},
+		{"space-bunny-free", "Space Bunny Free (OpenCode)", 1048576, 131072, true},
+		{"cat-jam-free", "Cat Jam Free (OpenCode)", 1048576, 131072, true},
+		{"nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free (OpenCode)", 1000000, 65536, false},
+
 		// Kilo Free Models (Active & Verified)
 		{"kilo-auto/free", "Kilo Auto Free", 256000, 10000, false},
 		{"poolside/laguna-s-2.1:free", "Poolside Laguna S 2.1 Free", 262144, 32768, false},
@@ -475,32 +496,42 @@ func decodeRequest(raw []byte) (executorRequest, error) {
 }
 
 func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse, error) {
-	if mimoModels[model] {
+	cleanModel := strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/")
+	if mimoModels[model] || mimoModels[cleanModel] {
 		return callMimo(payload, stream)
-	} else if kiloModels[model] {
+	} else if kiloModels[model] || kiloModels[cleanModel] {
 		return callKilo(model, payload, stream)
+	} else if openCodeModels[model] || openCodeModels[cleanModel] {
+		return callOpenCode(cleanModel, payload, stream)
 	}
-	// Default to OpenCode Zen
-	return callOpenCode(model, payload, stream)
+	// Default to OpenCode
+	return callOpenCode(cleanModel, payload, stream)
 }
 
 func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse, error) {
+	baseURL := strings.TrimRight(os.Getenv("OPENCODE_BASE_URL"), "/")
 	targetURL := opencodeChatURL
-	if model == "muse-spark-1.3-contributor-free" || model == "muse-spark-1.2-contributor-free" {
+	if baseURL != "" {
+		targetURL = baseURL + "/v1/chat/completions"
+	} else if model == "muse-spark-1.3-contributor-free" || model == "muse-spark-1.2-contributor-free" {
 		targetURL = opencodeResponsesURL
 	}
 
 	// Transform payload: force stream: true, inject decoy tool quartet, sanitize reasoning
 	transformedPayload := cloakOpencodePayload(payload, targetURL == opencodeResponsesURL)
 
+	sessionID := getOrCreateSession("default")
+	requestID := genRequestID()
+
 	headers := http.Header{
-		"Content-Type":        []string{"application/json"},
-		"Authorization":       []string{"Bearer public"},
-		"User-Agent":          []string{opencodeClientUA},
-		"x-opencode-client":   []string{"desktop"},
-		"x-opencode-project":  []string{"global"},
-		"x-opencode-session":  []string{getOrCreateSession("default")},
-		"x-opencode-request":  []string{genRequestID()},
+		"Content-Type":          []string{"application/json"},
+		"Authorization":         []string{"Bearer public"},
+		"User-Agent":            []string{opencodeClientUA},
+		"x-opencode-client":     []string{"cli"},
+		"x-opencode-project":    []string{"global"},
+		"x-opencode-session-id": []string{sessionID},
+		"x-opencode-session":    []string{sessionID},
+		"x-opencode-request":    []string{requestID},
 	}
 	if stream {
 		headers.Set("Accept", "text/event-stream")
@@ -528,6 +559,11 @@ func cloakOpencodePayload(raw []byte, isResponses bool) []byte {
 	var body map[string]any
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return raw
+	}
+
+	// Always strip "opencode/" prefix if present
+	if m, ok := body["model"].(string); ok {
+		body["model"] = strings.TrimPrefix(m, "opencode/")
 	}
 
 	// Always enforce stream = true to prevent 403 FreeTierError
@@ -788,16 +824,37 @@ func getOrCreateSession(key string) string {
 	return id
 }
 
+func genUlid(descending bool) string {
+	ulidMu.Lock()
+	defer ulidMu.Unlock()
+
+	now := time.Now().UnixMilli()
+	if now != lastUlidTime {
+		lastUlidTime = now
+		ulidCounter = 0
+	}
+	ulidCounter++
+
+	current := uint64((now << 12) + ulidCounter)
+	if descending {
+		current = ^current
+	}
+
+	timeHex := fmt.Sprintf("%012x", current>>16)
+	randBytes := make([]byte, 14)
+	rand.Read(randBytes)
+	for i := 0; i < 14; i++ {
+		randBytes[i] = base62Chars[int(randBytes[i])%len(base62Chars)]
+	}
+	return timeHex + string(randBytes)
+}
+
 func genSessionID() string {
-	t := time.Now().UnixMilli()
-	hexTime := fmt.Sprintf("%012x", t)
-	return fmt.Sprintf("ses_%s%s", hexTime, randomBase62(14))
+	return fmt.Sprintf("ses_%s", genUlid(true))
 }
 
 func genRequestID() string {
-	t := time.Now().UnixMilli()
-	hexTime := fmt.Sprintf("%012x", t)
-	return fmt.Sprintf("msg_%s%s", hexTime, randomBase62(14))
+	return fmt.Sprintf("msg_%s", genUlid(false))
 }
 
 func randomBase62(n int) string {
