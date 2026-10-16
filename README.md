@@ -1,66 +1,70 @@
 # CPA Free-Tier Plugin
 
 <p align="center">
-  <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=flat-square&logo=go" alt="CPA ABI v1" />
-  <img src="https://img.shields.io/badge/Architecture-AMD64%20%7C%20ARM64-4A154B?style=flat-square" alt="Arch AMD64 / ARM64" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License MIT" />
+  <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
+  <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
+  <img src="https://img.shields.io/badge/Release-v1.2.1-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
-A native dynamic C ABI plugin (`.so`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+) providing curated, **100% free AI models** without any API keys, accounts, or subscriptions.
+A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+). It gives you out-of-the-box access to curated, **100% free frontier AI models** without requiring user accounts, API keys, credits, or subscriptions.
 
 ---
 
-## 🌟 Features
+## 🌟 Key Features
 
-- **Zero API Keys:** Works out-of-the-box without login or setup.
-- **Universal Compatibility:** Automatically cleans parameters (`reasoning_effort`, `thinking`) sent by agents like Hermes, Cursor, and Claude Code.
-- **Native Streaming:** Clean SSE framing (`host.stream.emit`) with zero buffering.
-- **Multi-Architecture:** Pre-compiled native binaries for Linux `amd64` and `arm64`.
-- **Zero-Config with Smart Proxy Support:** Works directly without any proxy out-of-the-box. If you want to use custom proxies, simply configure the `OPENCODE_PROXY` environment variable or run an outbound proxy pool.
-
----
-
-## 📋 Active Models
-
-### OpenCode Zen (Zero-Key)
-| Model ID | Upstream | Notes |
-| :--- | :--- | :--- |
-| `glm-5.3-flash-free` | OpenCode | Flagship multimodal GLM 5.3 Flash (200k/1M context) |
-| `big-pickle` | OpenCode | Frontier deliberate reasoning model |
-| `deepseek-v4.1-flash-free` | OpenCode | DeepSeek V4.1 Flash reasoning specialist |
-| `space-bunny-free` | OpenCode | 1M context ultra-long frontier model |
-| `cat-jam-free` | OpenCode | Coding & agentic text reasoning model |
-| `nemotron-3.5-lightning-free` | OpenCode | Nemotron 3.5 lightning-fast code helper |
-
-### Kilo AI Free Tier
-| Model ID | Upstream | Notes |
-| :--- | :--- | :--- |
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | Kilo AI | 550B flagship reasoning model |
-| `nvidia/nemotron-3-super-120b-a12b:free` | Kilo AI | 120B high-context model |
-| `nvidia/nemotron-3.5-lightning:free` | Kilo AI | Nemotron 3.5 lightning-fast model |
-| `stealth/space-bunny-alpha` | Kilo AI | 1M ultra-long context frontier model |
-| `stepfun/step-3.7-flash:free` | Kilo AI | Fast reasoning & chat model |
-| `inclusionai/ling-3.0-flash-fin:free` | Kilo AI | Financial & code reasoning specialist |
-| `dots-studio/dots-3-note-preview:free` | Kilo AI | 512k context summarization specialist |
-| `poolside/laguna-s-2.1:free` | Kilo AI | Code generation specialist |
-| `poolside/laguna-xs-2.1:free` | Kilo AI | Lightweight code helper |
-| `liquid/lfm-2.5-2.6b:free` | Kilo AI | Liquid Neural Network model |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Kilo AI | Compact multimodal reasoning model |
-| `nex-agi/nex-n2.5-pro:free` | Kilo AI | Agentic & multi-turn model |
-| `nex-agi/nex-n2.5-mini:free` | Kilo AI | Ultra-low latency model |
-| `cohere/north-mini-code:free` | Kilo AI | Fast syntax & code helper |
-| `kilo-auto/free` | Kilo AI | Auto-routes to healthy free pool |
-| `openrouter/free` | Kilo AI | Dynamic community fallback pool |
+* **Zero-Key & Zero-Config:** Ready to use immediately. No account generation, credit cards, or API keys required.
+* **OpenCode v2 Wire Protocol:** Fully compliant with OpenCode's v2 CLI contract (`opencode/latest/2.0.26/cli`), descending session affinity, and automatic tool declaration spoofing to prevent `403 FreeTierError`.
+* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`reasoning_effort`, `thinking`) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**.
+* **Dual Execution Modes:**
+  * **Native Zero-Buffering Streaming:** Emits raw SSE chunks via host callbacks (`host.stream.emit`) with clean termination on `[DONE]`.
+  * **Intelligent Non-Streaming Assembler:** Seamlessly translates streaming upstream responses into full OpenAI-standard `chat.completion` JSON payloads.
+* **Full Multi-Platform Coverage:** First-class pre-compiled binaries for **Linux** (`amd64`, `arm64`), **macOS / Apple Silicon** (`darwin_arm64`, `darwin_amd64`), and **Windows** (`windows_amd64 .dll`).
+* **Resilient Network & Proxy Support:** Operates 100% direct out-of-the-box. Includes support for custom residential/egress proxies via `OPENCODE_PROXY` alongside non-blocking local proxy pool probing.
 
 ---
 
-## 🚀 Installation
+## 📋 Supported Free Models
 
-You can install this plugin either via the **CLIProxyAPI WebUI Plugin Store (1-Click)** or **manually via CLI**.
+### 1. OpenCode Zen Frontier Models (Zero-Key)
+| Model Identifier | Parameter Size / Specialization | Context Window | Max Output |
+| :--- | :--- | :--- | :--- |
+| `glm-5.3-flash-free` | Flagship multimodal agentic reasoning model | **200,000** | 32,768 |
+| `big-pickle` | Frontier deliberate deep-thought reasoning model | **200,000** | 32,000 |
+| `deepseek-v4.1-flash-free` | DeepSeek V4.1 Flash reasoning & code specialist | **1,000,000** | 384,000 |
+| `space-bunny-free` | Ultra-long context frontier model | **1,048,576** | 131,072 |
+| `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
+| `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
+| `muse-spark-1.2-contributor-free` | Collaborative contributor reasoning model | **1,048,576** | 131,072 |
+| `muse-spark-1.3-contributor-free` | Enhanced collaborative multimodal model | **1,048,576** | 131,072 |
 
-### Option A: Via Plugin Store (Recommended & Easiest)
+### 2. Kilo AI Curated Models
+| Model Identifier | Specialization | Context Window | Max Output |
+| :--- | :--- | :--- | :--- |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | 550B flagship frontier reasoning model | **1,000,000** | 65,536 |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 120B high-throughput reasoning model | **1,000,000** | 65,536 |
+| `nvidia/nemotron-3.5-lightning:free` | Ultra-fast general assistant model | **1,000,000** | 65,536 |
+| `stealth/space-bunny-alpha` | 1M ultra-long context model | **1,000,000** | 65,536 |
+| `stepfun/step-3.7-flash:free` | Fast multi-step reasoning model | **262,144** | 262,144 |
+| `inclusionai/ling-3.0-flash-fin:free` | Finance & domain reasoning specialist | **262,144** | 32,768 |
+| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 65,536 |
+| `poolside/laguna-s-2.1:free` | Code synthesis & refactoring specialist | **262,144** | 32,768 |
+| `poolside/laguna-xs-2.1:free` | Lightweight low-latency code assistant | **262,144** | 32,768 |
+| `liquid/lfm-2.5-2.6b:free` | Liquid Neural Network adaptive model | **65,536** | 16,384 |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
+| `nex-agi/nex-n2.5-pro:free` | Agentic & complex multi-turn workflows | **256,000** | 32,000 |
+| `nex-agi/nex-n2.5-mini:free` | Ultra-low latency chat assistant | **256,000** | 32,000 |
+| `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
+| `kilo-auto/free` | Smart router across active free pools | **256,000** | 10,000 |
+| `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
 
-1. Add this repository's registry URL to your `config.yaml`:
+---
+
+## 🚀 Installation & Setup
+
+### Method 1: CLIProxyAPI Plugin Store (1-Click Install)
+
+1. Ensure plugin store support is enabled in your `config.yaml`:
    ```yaml
    plugins:
      enabled: true
@@ -72,85 +76,152 @@ You can install this plugin either via the **CLIProxyAPI WebUI Plugin Store (1-C
    ```
 2. Open your CLIProxyAPI Management Center (`#/plugin-store`).
 3. Search for **CPA Free-Tier Models** and click **Install**.
-4. Create the auth provider descriptor in your `auth-dir` (default `~/.cli-proxy-api/`):
+4. Create the provider descriptor in your `auth-dir` (default `~/.cli-proxy-api/`):
    ```bash
    echo '{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}' > ~/.cli-proxy-api/cpa-freetier-plugin.json
    ```
-5. Restart CLIProxyAPI (`systemctl restart cliproxyapi`).
+5. Restart CLIProxyAPI.
 
 ---
 
-### Option B: Manual CLI Installation
+### Method 2: Manual Installation (All Platforms)
 
-#### 1. Download Binary
-Choose the command matching your architecture:
+Download the verified platform package from [Releases](https://github.com/tsaQB/cpa-freetier-plugin/releases/latest):
 
-**Linux ARM64 (aarch64):**
+#### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.0.0/cpa-freetier-plugin_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
-**Linux AMD64 (x86_64):**
+#### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.0.0/cpa-freetier-plugin_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
-#### 2. Enable in `config.yaml`
+#### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
+```bash
+mkdir -p ~/.cli-proxy-api/plugins
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_darwin_arm64.zip -o /tmp/plugin.zip
+unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
+rm /tmp/plugin.zip
+```
+
+#### 🍏 macOS (Intel x86_64)
+```bash
+mkdir -p ~/.cli-proxy-api/plugins
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_darwin_amd64.zip -o /tmp/plugin.zip
+unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
+rm /tmp/plugin.zip
+```
+
+#### 🪟 Windows (x86_64)
+Extract `cpa-freetier-plugin_1.2.1_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+
+#### Register Provider Descriptor & Enable
+In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
+```json
+{
+  "disabled": false,
+  "provider": "cpa-freetier-plugin",
+  "type": "cpa-freetier-plugin"
+}
+```
+Enable the plugin in `config.yaml`:
 ```yaml
 plugins:
   enabled: true
-  dir: "plugins" # or full path, e.g. ~/.cli-proxy-api/plugins
+  dir: "plugins" # or full path to directory
   configs:
     cpa-freetier-plugin:
       enabled: true
 ```
 
-#### 3. Register Auth Provider & Restart
+---
+
+## 🌐 Optional Outbound Proxy Support
+
+The plugin **works 100% direct out-of-the-box without requiring any proxy**.
+
+However, if your host is hosted in a restricted cloud datacenter and you want to route OpenCode requests through custom residential, mobile, or SOCKS5 proxies to eliminate rate-limits, define `OPENCODE_PROXY`:
+
 ```bash
-echo '{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}' > ~/.cli-proxy-api/cpa-freetier-plugin.json
-systemctl restart cliproxyapi
+# Supports HTTP, HTTPS, or SOCKS5 proxies
+export OPENCODE_PROXY="http://127.0.0.1:8080"
+# or
+export OPENCODE_PROXY="socks5h://127.0.0.1:1080"
 ```
+
+If `OPENCODE_PROXY` is unset, the plugin connects direct to upstream via the host's standard network interface.
 
 ---
 
-## 🌐 Proxy Configuration (Optional)
+## 🧪 Verification & Usage Example
 
-The plugin **works 100% out-of-the-box directly without any proxy**.
+Test your deployment via `curl` against your local CLIProxyAPI instance (`:8317`):
 
-However, if your server environment is in a restricted datacenter or if you want to route traffic through a custom proxy or residential node, you can specify an outbound proxy via the `OPENCODE_PROXY` environment variable:
-
-```bash
-export OPENCODE_PROXY="http://127.0.0.1:8080" # or socks5://...
-```
-
-If no proxy is set, the plugin connects directly via standard network interfaces.
-
----
-
-## 🧪 Usage Example
-
-Point any OpenAI-compatible client to port `8317`:
-
+### Streaming Call
 ```bash
 curl -N http://127.0.0.1:8317/v1/chat/completions \
   -H "Authorization: Bearer YOUR_CPA_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "messages": [{"role": "user", "content": "Hello!"}],
+    "model": "big-pickle",
+    "messages": [{"role": "user", "content": "Explain quantum tunneling in two sentences."}],
     "stream": true
   }'
+```
+
+### Python OpenAI SDK
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8317/v1",
+    api_key=os.getenv("CLIPROXY_API_KEY", "your-cpa-key")
+)
+
+response = client.chat.completions.create(
+    model="glm-5.3-flash-free",
+    messages=[{"role": "user", "content": "Hello world!"}],
+    stream=True
+)
+
+for chunk in response:
+    if chunk.choices and chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()
+```
+
+---
+
+## 🏗️ Building From Source
+
+Prerequisites: Go 1.22+ and GCC toolchains.
+
+```bash
+# Clone the repository
+git clone https://github.com/tsaQB/cpa-freetier-plugin.git
+cd cpa-freetier-plugin
+
+# Build Linux AMD64 (.so)
+make build-linux-amd64
+
+# Build Linux ARM64 (.so)
+make build-linux-arm64
+
+# Build Windows AMD64 (.dll)
+make build-windows-amd64
 ```
 
 ---
 
 ## 📄 License
 
-MIT
-
+Distributed under the **MIT License**. See `LICENSE` for more information.
