@@ -113,12 +113,15 @@ func logMsg(format string, args ...any) {
 }
 
 func getOpenCodeProxy() *url.URL {
+	// 1. Prioritas utama: Environment variable eksplisit jika user/developer menentukan sendiri
 	if p := os.Getenv("OPENCODE_PROXY"); p != "" {
 		if u, err := url.Parse(p); err == nil {
 			return u
 		}
 	}
-	// Active local proxies on this VM: 8127 (Armbian XL LTE), 8124 (Biznet VIP4), 8125 (Biznet VIP3), 8123 (SG)
+
+	// 2. Fallback otomatis untuk VM / host yang memiliki local proxy pool (misal Xray, Tinyproxy, dsb)
+	// Hanya jika port tersebut benar-benar LISTEN dan bisa dihubungi dalam 60ms.
 	ports := []string{"8127", "8124", "8125", "8123"}
 	idx := atomic.AddUint32(&proxyIndex, 1)
 	for i := 0; i < len(ports); i++ {
@@ -131,6 +134,8 @@ func getOpenCodeProxy() *url.URL {
 			return u
 		}
 	}
+
+	// 3. User umum (tanpa proxy): Mengembalikan nil agar request langsung konek direct (atau lewat HTTP_PROXY sistem)
 	return nil
 }
 

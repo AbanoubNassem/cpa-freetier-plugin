@@ -16,6 +16,7 @@ A native dynamic C ABI plugin (`.so`) for **[CLIProxyAPI](https://github.com/rou
 - **Universal Compatibility:** Automatically cleans parameters (`reasoning_effort`, `thinking`) sent by agents like Hermes, Cursor, and Claude Code.
 - **Native Streaming:** Clean SSE framing (`host.stream.emit`) with zero buffering.
 - **Multi-Architecture:** Pre-compiled native binaries for Linux `amd64` and `arm64`.
+- **Zero-Config with Smart Proxy Support:** Works directly without any proxy out-of-the-box. If you want to use custom proxies, simply configure the `OPENCODE_PROXY` environment variable or run an outbound proxy pool.
 
 ---
 
@@ -115,6 +116,20 @@ plugins:
 echo '{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}' > ~/.cli-proxy-api/cpa-freetier-plugin.json
 systemctl restart cliproxyapi
 ```
+
+---
+
+## 🌐 Proxy Configuration (Optional)
+
+The plugin **works 100% out-of-the-box directly without any proxy**.
+
+However, if your server environment is in a restricted datacenter or if you want to route traffic through a custom proxy or residential node, you can specify an outbound proxy via the `OPENCODE_PROXY` environment variable:
+
+```bash
+export OPENCODE_PROXY="http://127.0.0.1:8080" # or socks5://...
+```
+
+If no proxy is set, the plugin connects directly via standard network interfaces.
 
 ---
 
