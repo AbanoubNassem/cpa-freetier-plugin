@@ -118,8 +118,8 @@ func getOpenCodeProxy() *url.URL {
 			return u
 		}
 	}
-	// Active local proxies on this VM: 8124 (Biznet VIP4), 8125 (Biznet VIP3), 8123 (SG)
-	ports := []string{"8124", "8125", "8123"}
+	// Active local proxies on this VM: 8127 (Armbian XL LTE), 8124 (Biznet VIP4), 8125 (Biznet VIP3), 8123 (SG)
+	ports := []string{"8127", "8124", "8125", "8123"}
 	idx := atomic.AddUint32(&proxyIndex, 1)
 	for i := 0; i < len(ports); i++ {
 		port := ports[(int(idx)+i)%len(ports)]
