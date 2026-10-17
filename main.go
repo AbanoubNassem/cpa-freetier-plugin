@@ -80,9 +80,9 @@ const (
 	pluginID   = "cpa-freetier-plugin"
 
 	// OpenCode v2 Endpoints
-	opencodeChatURL      = "https://opencode.ai/inference/v1/chat/completions"
-	opencodeResponsesURL = "https://opencode.ai/inference/v1/responses"
-	opencodeClientUA     = "opencode/latest/2.0.26/cli"
+	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
+	opencodeResponsesURL = "https://opencode.ai/inference/openai/v1/responses"
+	opencodeClientUA     = "opencode/latest/2.0.32/cli"
 
 	// Kilo Endpoints
 	kiloChatURL = "https://api.kilo.ai/api/gateway/chat/completions"
@@ -622,7 +622,7 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	baseURL := strings.TrimRight(os.Getenv("OPENCODE_BASE_URL"), "/")
 	targetURL := opencodeChatURL
 	if baseURL != "" {
-		targetURL = baseURL + "/inference/v1/chat/completions"
+		targetURL = baseURL + "/inference/openai/v1/chat/completions"
 	} else if model == "muse-spark-1.3-contributor-free" || model == "muse-spark-1.2-contributor-free" {
 		targetURL = opencodeResponsesURL
 	}
@@ -642,6 +642,7 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 		"x-opencode-session":    []string{sessionID},
 		"x-session-affinity":    []string{sessionID},
 		"x-session-id":          []string{sessionID},
+		"X-Session-Id":          []string{sessionID},
 		"Accept":                []string{"text/event-stream"},
 	}
 
