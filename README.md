@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.1-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.2-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -15,7 +15,7 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 
 * **Zero-Key & Zero-Config:** Ready to use immediately. No account generation, credit cards, or API keys required.
 * **OpenCode v2 Wire Protocol:** Fully compliant with OpenCode's v2 CLI contract (`opencode/latest/2.0.26/cli`), descending session affinity, and automatic tool declaration spoofing to prevent `403 FreeTierError`.
-* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`reasoning_effort`, `thinking`) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**.
+* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`reasoning_effort`, `thinking`, `enable_thinking`, `thinking_budget`, `thinking_config`, etc.) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**. Supports custom fields via the `CPA_STRIP_FIELDS` environment variable.
 * **Dual Execution Modes:**
   * **Native Zero-Buffering Streaming:** Emits raw SSE chunks via host callbacks (`host.stream.emit`) with clean termination on `[DONE]`.
   * **Intelligent Non-Streaming Assembler:** Seamlessly translates streaming upstream responses into full OpenAI-standard `chat.completion` JSON payloads.
@@ -33,10 +33,16 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 | `big-pickle` | Frontier deliberate deep-thought reasoning model | **200,000** | 32,000 |
 | `deepseek-v4.1-flash-free` | DeepSeek V4.1 Flash reasoning & code specialist | **1,000,000** | 384,000 |
 | `space-bunny-free` | Ultra-long context frontier model | **1,048,576** | 131,072 |
+| `mimo-v2.6-flash-free` | Xiaomi MiMo 2.6 Flash reasoning & instruction model | **262,144** | 65,536 |
+| `beam-free` | Low-latency versatile general chat model | **200,000** | 32,768 |
+| `longcat-2.5-preview-free` | 1M context long-document reasoning specialist | **1,000,000** | 65,536 |
+| `nemotron-3.5-super-vl-free` | Multimodal vision-language reasoning model | **1,000,000** | 65,536 |
 | `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
 | `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
 | `muse-spark-1.2-contributor-free` | Collaborative contributor reasoning model | **1,048,576** | 131,072 |
 | `muse-spark-1.3-contributor-free` | Enhanced collaborative multimodal model | **1,048,576** | 131,072 |
+
+> **Note on `jev-1.13-free`:** While present in OpenCode's backend catalog, `jev-1.13-free` rejects standard chat completions upstream (`ModelProtocolUnsupported`) and is omitted from the chat provider catalog.
 
 ### 2. Kilo AI Curated Models
 | Model Identifier | Specialization | Context Window | Max Output |
@@ -91,7 +97,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.2/cpa-freetier-plugin_1.2.2_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -99,7 +105,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.2/cpa-freetier-plugin_1.2.2_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -107,7 +113,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.2/cpa-freetier-plugin_1.2.2_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -115,13 +121,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.1/cpa-freetier-plugin_1.2.1_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.2/cpa-freetier-plugin_1.2.2_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.1_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.2.2_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:

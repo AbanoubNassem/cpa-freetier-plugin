@@ -120,9 +120,16 @@ func getOpenCodeProxy() *url.URL {
 		}
 	}
 
-	// 2. Fallback otomatis untuk VM / host yang memiliki local proxy pool (misal Xray, Tinyproxy, dsb)
-	// Hanya jika port tersebut benar-benar LISTEN dan bisa dihubungi dalam 60ms.
-	ports := []string{"8127", "8124", "8125", "8123"}
+	// 2. Prioritas mobile residential proxy (Armbian XL LTE: 8127) jika aktif
+	// IP seluler memiliki reputasi tertinggi dan 100% lolos dari blokir ASN datacenter OpenCode.
+	if conn, err := net.DialTimeout("tcp", "127.0.0.1:8127", 60*time.Millisecond); err == nil {
+		conn.Close()
+		u, _ := url.Parse("http://127.0.0.1:8127")
+		return u
+	}
+
+	// 3. Fallback otomatis ke pool proxy lain jika 8127 tidak aktif
+	ports := []string{"8124", "8125", "8123"}
 	idx := atomic.AddUint32(&proxyIndex, 1)
 	for i := 0; i < len(ports); i++ {
 		port := ports[(int(idx)+i)%len(ports)]
@@ -135,7 +142,7 @@ func getOpenCodeProxy() *url.URL {
 		}
 	}
 
-	// 3. User umum (tanpa proxy): Mengembalikan nil agar request langsung konek direct (atau lewat HTTP_PROXY sistem)
+	// 4. User umum (tanpa proxy): Mengembalikan nil agar request langsung konek direct (atau lewat HTTP_PROXY sistem)
 	return nil
 }
 
@@ -166,6 +173,10 @@ var openCodeModels = map[string]bool{
 	"deepseek-v4.1-flash-free":        true,
 	"space-bunny-free":                true,
 	"cat-jam-free":                    true,
+	"mimo-v2.6-flash-free":            true,
+	"beam-free":                       true,
+	"longcat-2.5-preview-free":        true,
+	"nemotron-3.5-super-vl-free":      true,
 	"nemotron-3.5-lightning-free":     true,
 	"muse-spark-1.2-contributor-free": true,
 	"muse-spark-1.3-contributor-free": true,
@@ -289,7 +300,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 			"schema_version": 1,
 			"metadata": map[string]any{
 				"Name":             pluginID,
-				"Version":          "1.2.1",
+				"Version":          "1.2.2",
 				"Author":           "tsaQB",
 				"GitHubRepository": "https://github.com/tsaQB/cpa-freetier-plugin",
 				"ConfigFields":     []any{},
@@ -339,6 +350,37 @@ type payloadResponse struct {
 	Body json.RawMessage `json:"Body"`
 }
 
+var defaultSanitizeFields = []string{
+	"reasoning_effort",
+	"thinking",
+	"enable_thinking",
+	"thinking_budget",
+	"thinking_config",
+	"search",
+	"web_search",
+	"return_citations",
+}
+
+func sanitizePayloadMap(bodyMap map[string]any) bool {
+	changed := false
+	fieldsToStrip := append([]string(nil), defaultSanitizeFields...)
+	if custom := os.Getenv("CPA_STRIP_FIELDS"); custom != "" {
+		for _, f := range strings.Split(custom, ",") {
+			f = strings.TrimSpace(f)
+			if f != "" {
+				fieldsToStrip = append(fieldsToStrip, f)
+			}
+		}
+	}
+	for _, f := range fieldsToStrip {
+		if _, exists := bodyMap[f]; exists {
+			delete(bodyMap, f)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func normalizeRequest(payload []byte) ([]byte, error) {
 	var req requestTransformRequest
 	if len(payload) > 0 {
@@ -360,14 +402,7 @@ func normalizeRequest(payload []byte) ([]byte, error) {
 
 	// Clean parameters that conflict with Kilo AI or OpenCode
 	if strings.Contains(modelLower, ":free") || strings.HasPrefix(modelLower, "kilo-auto") || openCodeModels[modelLower] {
-		if _, exists := bodyMap["reasoning_effort"]; exists {
-			delete(bodyMap, "reasoning_effort")
-			changed = true
-		}
-		if _, exists := bodyMap["thinking"]; exists {
-			delete(bodyMap, "thinking")
-			changed = true
-		}
+		changed = sanitizePayloadMap(bodyMap)
 	}
 
 	if changed {
@@ -393,6 +428,10 @@ func listModels() []map[string]any {
 		{"big-pickle", "Big Pickle Free (OpenCode)", 200000, 32000, true},
 		{"deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free (OpenCode)", 1000000, 384000, true},
 		{"space-bunny-free", "Space Bunny Free (OpenCode)", 1048576, 131072, true},
+		{"mimo-v2.6-flash-free", "MiMo v2.6 Flash Free (OpenCode)", 262144, 65536, true},
+		{"beam-free", "Beam Free (OpenCode)", 200000, 32768, true},
+		{"longcat-2.5-preview-free", "LongCat 2.5 Preview Free (OpenCode)", 1000000, 65536, true},
+		{"nemotron-3.5-super-vl-free", "Nemotron 3.5 Super VL Free (OpenCode)", 1000000, 65536, false},
 		{"cat-jam-free", "Cat Jam Free (OpenCode)", 1048576, 131072, true},
 		{"nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free (OpenCode)", 1000000, 65536, false},
 		{"muse-spark-1.2-contributor-free", "Muse Spark 1.2 Contributor Free", 1048576, 131072, true},
@@ -687,6 +726,8 @@ func cloakOpencodePayload(raw []byte, isResponses bool) []byte {
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return raw
 	}
+
+	sanitizePayloadMap(body)
 
 	if m, ok := body["model"].(string); ok {
 		body["model"] = strings.TrimPrefix(m, "opencode/")
