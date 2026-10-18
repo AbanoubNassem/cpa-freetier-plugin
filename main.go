@@ -76,8 +76,9 @@ import (
 )
 
 const (
-	abiVersion = 1
-	pluginID   = "cpa-freetier-plugin"
+	abiVersion    = 1
+	pluginID      = "cpa-freetier-plugin"
+	pluginVersion = "1.2.4"
 
 	// OpenCode v2 Endpoints
 	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
@@ -300,7 +301,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 			"schema_version": 1,
 			"metadata": map[string]any{
 				"Name":             pluginID,
-				"Version":          "1.2.2",
+				"Version":          pluginVersion,
 				"Author":           "tsaQB",
 				"GitHubRepository": "https://github.com/tsaQB/cpa-freetier-plugin",
 				"ConfigFields":     []any{},
