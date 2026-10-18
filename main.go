@@ -61,6 +61,8 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,17 +71,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 )
 
 const (
-	abiVersion    = 1
-	pluginID      = "cpa-freetier-plugin"
-	pluginVersion = "1.2.5"
+	abiVersion = 1
+
+	// maxSSELineBytes bounds one SSE "data:" line. Agent turns routinely carry
+	// large tool-call payloads, and a bufio.Scanner that overflows its buffer
+	// aborts the whole stream with ErrTooLong.
+	maxSSELineBytes = 16 << 20
+
+	pluginID = "cpa-freetier-plugin"
 
 	// OpenCode v2 Endpoints
 	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
@@ -90,11 +97,15 @@ const (
 	kiloChatURL = "https://api.kilo.ai/api/gateway/chat/completions"
 )
 
+// pluginVersion is stamped at build time:
+// -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
+// hand-editing this file, plugin.json and the README on every release.
+var pluginVersion = "1.2.6"
+
 const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 const sessionPrefixMask = (uint64(1) << 48) - 1
 
 var (
-	proxyIndex     uint32
 	sessionMu      sync.Mutex
 	lastSessionTs  int64
 	sessionCounter int64
@@ -106,100 +117,364 @@ type sessionEntry struct {
 	lastUsed  time.Time
 }
 
-func logMsg(format string, args ...any) {
-	f, err := os.OpenFile("/tmp/cpa_plugin.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err == nil {
-		defer f.Close()
-		fmt.Fprintf(f, "[%s] "+format+"\n", append([]any{time.Now().Format("15:04:05.000")}, args...)...)
+// ── Logging ─────────────────────────────────────────────────────────────────
+//
+// Two hard rules learned in production:
+//  1. Request bodies are NEVER written to the log. A payload can carry the whole
+//     conversation, so only its length and a short fingerprint are recorded.
+//  2. The file is bounded. The previous implementation appended to a fixed path
+//     with no cap; on a 512 MiB tmpfs it reached 393 MiB in ~90 minutes.
+//
+// Destination: CPA_FREETIER_LOG, else <home>/.cli-proxy-api/logs/, else /tmp.
+// Verbose request tracing: CPA_FREETIER_DEBUG=1.
+
+const (
+	maxLogBytes = 8 << 20 // rotate at 8 MiB, one "<file>.1" generation kept
+	logFileName = "cpa-freetier-plugin.log"
+)
+
+// legacyLogPath is the last resort when no home directory is resolvable (or the
+// data dir cannot be created). os.TempDir() keeps this portable: /tmp on Linux,
+// TMPDIR elsewhere, and the same file the pre-1.2.6 build used.
+func legacyLogPath() string { return filepath.Join(os.TempDir(), "cpa_plugin.log") }
+
+var (
+	logMu       sync.Mutex
+	logHandle   *os.File
+	logPathUsed string
+	logSize     int64
+	logDisabled bool
+)
+
+func debugEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CPA_FREETIER_DEBUG"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// logDebug is for diagnostics that are only useful while troubleshooting.
+func logDebug(format string, args ...any) {
+	if debugEnabled() {
+		logMsg(format, args...)
 	}
 }
 
+func logFilePath() string {
+	if p := strings.TrimSpace(os.Getenv("CPA_FREETIER_LOG")); p != "" {
+		return p
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".cli-proxy-api", "logs", logFileName)
+	}
+	return legacyLogPath()
+}
+
+// openLogLocked must be called with logMu held.
+func openLogLocked(path string) {
+	if logHandle != nil || logDisabled {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		path = legacyLogPath()
+	}
+	// 0600: log lines carry model names, egress and timings — not secrets, but
+	// nothing a co-tenant on a shared host needs to read.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		logDisabled = true // never fail a request because logging is impossible
+		return
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		logDisabled = true
+		return
+	}
+	logHandle = f
+	logPathUsed = path
+	logSize = info.Size()
+}
+
+// rotateLogLocked must be called with logMu held.
+func rotateLogLocked() {
+	if logHandle == nil {
+		return
+	}
+	path := logPathUsed
+	_ = logHandle.Close()
+	logHandle = nil
+	rotated := path + ".1"
+	_ = os.Remove(rotated)
+	if err := os.Rename(path, rotated); err != nil {
+		_ = os.Remove(path)
+	}
+	logSize = 0
+	openLogLocked(path)
+}
+
+func logMsg(format string, args ...any) {
+	line := fmt.Sprintf("[%s] "+format+"\n", append([]any{time.Now().Format("15:04:05.000")}, args...)...)
+	logMu.Lock()
+	defer logMu.Unlock()
+	openLogLocked(logFilePath())
+	if logHandle == nil {
+		return
+	}
+	if logSize+int64(len(line)) > maxLogBytes {
+		rotateLogLocked()
+		if logHandle == nil {
+			return
+		}
+	}
+	n, _ := logHandle.WriteString(line)
+	logSize += int64(n)
+}
+
+// payloadFingerprint identifies a payload for correlation without exposing it.
+func payloadFingerprint(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+// ── Egress selection ────────────────────────────────────────────────────────
+//
+// The built-in pools are lab defaults and all point at loopback addresses. On a
+// laptop or a plain VPS nothing answers there, the probe fails and the plugin
+// connects directly through the ambient network — no configuration required.
+//
+// Override with OPENCODE_PROXY_POOL / OPENCODE_DATACENTER_PROXY_POOL
+// (comma-separated host:port or full proxy URLs); an explicitly empty value
+// disables probing for that class.
+//
+// Datacenter egress is opt-in: hosts on datacenter ASNs are answered by the
+// OpenCode free tier with 403 FreeTierError, so probing them by default would
+// only ever produce failures.
+var (
+	defaultOpenCodeProxies           = []string{"127.0.0.1:8127"} // mobile/residential tunnel
+	defaultOpenCodeDatacenterProxies = []string{"127.0.0.1:8123", "127.0.0.1:8124", "127.0.0.1:8125", "127.0.0.1:8126"}
+
+	proxyCacheMu   sync.Mutex
+	proxyCacheURL  *url.URL
+	proxyCacheAt   time.Time
+	proxyCacheInit bool
+)
+
+// proxyProbeTTL keeps the reachability probe off the hot path: previously every
+// single request opened a TCP connection just to test the proxy.
+const proxyProbeTTL = 30 * time.Second
+
+func dialable(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 60*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func datacenterAllowed() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("OPENCODE_ALLOW_DATACENTER"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// validProxyTarget rejects entries that parse as a URL but carry no usable
+// host:port (for example `:::` which parses into an IPv6-ish `http://:::`).
+func validProxyTarget(u *url.URL) bool {
+	if u == nil || u.Host == "" {
+		return false
+	}
+	// Bracketed IPv6 literal, e.g. [::1]:8080 — the parser already checked shape.
+	if strings.HasPrefix(u.Host, "[") {
+		return strings.Contains(u.Host, "]")
+	}
+	if !strings.Contains(u.Host, ":") {
+		return true // bare hostname, default port
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil || host == "" {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
+}
+
+// proxyPool resolves an ordered candidate list: environment first (comma
+// separated, host:port or full URL), otherwise the compiled-in default. An
+// explicitly empty value means "probe nothing", which is how a user opts out.
+func proxyPool(envName string, defaults []string) []*url.URL {
+	raw, configured := os.LookupEnv(envName)
+	if !configured {
+		raw = strings.Join(defaults, ",")
+	}
+
+	var out []*url.URL
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "://") {
+			part = "http://" + part
+		}
+		u, err := url.Parse(part)
+		if err != nil || !validProxyTarget(u) {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
+// proxyReachable reports whether a proxy's listener answers. It only inspects
+// local reachability; whether the egress IP is accepted upstream is a separate
+// question the free-tier gate decides.
+func proxyReachable(u *url.URL) bool {
+	if !validProxyTarget(u) {
+		return false
+	}
+	return dialable(u.Host)
+}
+
+// getOpenCodeProxy returns the egress for OpenCode, or nil for the ambient
+// HTTP(S)_PROXY / direct connection.
 func getOpenCodeProxy() *url.URL {
-	// 1. Prioritas utama: Environment variable eksplisit jika user/developer menentukan sendiri
-	if p := os.Getenv("OPENCODE_PROXY"); p != "" {
+	// Explicit override always wins.
+	if p := strings.TrimSpace(os.Getenv("OPENCODE_PROXY")); p != "" {
 		if u, err := url.Parse(p); err == nil {
 			return u
 		}
 	}
 
-	// 2. Prioritas mobile residential proxy (Armbian XL LTE: 8127) jika aktif
-	// IP seluler memiliki reputasi tertinggi dan 100% lolos dari blokir ASN datacenter OpenCode.
-	if conn, err := net.DialTimeout("tcp", "127.0.0.1:8127", 60*time.Millisecond); err == nil {
-		conn.Close()
-		u, _ := url.Parse("http://127.0.0.1:8127")
-		return u
+	proxyCacheMu.Lock()
+	defer proxyCacheMu.Unlock()
+	if proxyCacheInit && time.Since(proxyCacheAt) < proxyProbeTTL {
+		return proxyCacheURL
 	}
 
-	// 3. Fallback otomatis ke pool proxy lain jika 8127 tidak aktif
-	ports := []string{"8124", "8125", "8123"}
-	idx := atomic.AddUint32(&proxyIndex, 1)
-	for i := 0; i < len(ports); i++ {
-		port := ports[(int(idx)+i)%len(ports)]
-		addr := "127.0.0.1:" + port
-		conn, err := net.DialTimeout("tcp", addr, 60*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			u, _ := url.Parse("http://" + addr)
-			return u
+	var chosen *url.URL
+	for _, u := range proxyPool("OPENCODE_PROXY_POOL", defaultOpenCodeProxies) {
+		if proxyReachable(u) {
+			chosen = u
+			break
+		}
+	}
+	if chosen == nil && datacenterAllowed() {
+		for _, u := range proxyPool("OPENCODE_DATACENTER_PROXY_POOL", defaultOpenCodeDatacenterProxies) {
+			if proxyReachable(u) {
+				chosen = u
+				break
+			}
 		}
 	}
 
-	// 4. User umum (tanpa proxy): Mengembalikan nil agar request langsung konek direct (atau lewat HTTP_PROXY sistem)
-	return nil
+	proxyCacheURL = chosen
+	proxyCacheAt = time.Now()
+	proxyCacheInit = true
+	return chosen
+}
+
+// invalidateOpenCodeProxy forces a fresh probe after a transport-level failure.
+func invalidateOpenCodeProxy() {
+	proxyCacheMu.Lock()
+	proxyCacheInit = false
+	proxyCacheURL = nil
+	proxyCacheMu.Unlock()
+}
+
+// ── HTTP transports ─────────────────────────────────────────────────────────
+//
+// Transports are process-wide and cached per egress. Rebuilding one per request
+// (the previous behaviour) threw away keep-alive: every call paid a fresh TCP +
+// TLS handshake and the pool tuning below never took effect.
+var transportCache sync.Map // key -> *http.Transport
+
+func newTransport(proxy *url.URL) *http.Transport {
+	tr := &http.Transport{
+		MaxIdleConns:          128,
+		MaxIdleConnsPerHost:   32,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 120 * time.Second, // bodies stream, headers must not hang
+		ExpectContinueTimeout: 1 * time.Second,
+		// Stay on HTTP/1.1 through the CONNECT proxy: that is the wire shape the
+		// OpenCode free-tier gate currently accepts.
+		ForceAttemptHTTP2: false,
+	}
+	if proxy != nil {
+		tr.Proxy = http.ProxyURL(proxy)
+	} else {
+		tr.Proxy = http.ProxyFromEnvironment
+	}
+	return tr
+}
+
+func getTransport(key string, proxy *url.URL) *http.Transport {
+	if v, ok := transportCache.Load(key); ok {
+		return v.(*http.Transport)
+	}
+	tr := newTransport(proxy)
+	if actual, loaded := transportCache.LoadOrStore(key, tr); loaded {
+		tr.CloseIdleConnections()
+		return actual.(*http.Transport)
+	}
+	return tr
+}
+
+func invalidateTransport(key string) {
+	if v, ok := transportCache.Load(key); ok {
+		v.(*http.Transport).CloseIdleConnections()
+	}
+	transportCache.Delete(key)
 }
 
 func getHTTPClient(forOpenCode bool) *http.Client {
-	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
-		IdleConnTimeout:     90 * time.Second,
+	if !forOpenCode {
+		return &http.Client{Transport: getTransport("env", nil)}
 	}
-	if forOpenCode {
-		if p := getOpenCodeProxy(); p != nil {
-			transport.Proxy = http.ProxyURL(p)
-		} else {
-			transport.Proxy = http.ProxyFromEnvironment
-		}
-	} else {
-		transport.Proxy = http.ProxyFromEnvironment
+	proxy := getOpenCodeProxy()
+	key := "env"
+	if proxy != nil {
+		key = proxy.String()
 	}
-	return &http.Client{
-		Timeout:   90 * time.Second,
-		Transport: transport,
-	}
+	// No client-wide Timeout: it would abort long SSE responses. ResponseHeaderTimeout
+	// on the transport is what protects against a hung upstream instead.
+	return &http.Client{Transport: getTransport(key, proxy)}
 }
 
 var openCodeModels = map[string]bool{
-	"glm-5.3-flash-free":              true,
-	"big-pickle":                      true,
-	"deepseek-v4.1-flash-free":        true,
-	"space-bunny-free":                true,
-	"cat-jam-free":                    true,
-	"mimo-v2.6-flash-free":            true,
-	"beam-free":                       true,
-	"longcat-2.5-preview-free":        true,
-	"nemotron-3.5-super-vl-free":      true,
-	"nemotron-3.5-lightning-free":     true,
-	"muse-spark-1.2-contributor-free": true,
-	"muse-spark-1.3-contributor-free": true,
+	"glm-5.3-flash-free":          true,
+	"big-pickle":                  true,
+	"deepseek-v4.1-flash-free":    true,
+	"space-bunny-free":            true,
+	"cat-jam-free":                true,
+	"mimo-v2.6-flash-free":        true,
+	"beam-free":                   true,
+	"longcat-2.5-preview-free":    true,
+	"nemotron-3.5-super-vl-free":  true,
+	"nemotron-3.5-lightning-free": true,
 }
 
 var kiloModels = map[string]bool{
-	"kilo-auto/free":                                    true,
-	"nvidia/nemotron-3-ultra-550b-a55b:free":            true,
-	"cohere/north-mini-code:free":                       true,
-	"openrouter/free":                                   true,
-	"nvidia/nemotron-3-super-120b-a12b:free":            true,
+	"kilo-auto/free":                                     true,
+	"nvidia/nemotron-3-ultra-550b-a55b:free":             true,
+	"cohere/north-mini-code:free":                        true,
+	"openrouter/free":                                    true,
+	"nvidia/nemotron-3-super-120b-a12b:free":             true,
 	"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": true,
 	"nvidia/nemotron-3.5-lightning:free":                 true,
-	"nvidia/nemotron-3.5-super-vl:free":                 true,
+	"nvidia/nemotron-3.5-super-vl:free":                  true,
 	"poolside/laguna-s-2.1:free":                         true,
 	"poolside/laguna-xs-2.1:free":                        true,
 	"dots-studio/dots-3-note-preview:free":               true,
 	"liquid/lfm-2.5-2.6b:free":                           true,
 	"thinkingmachines/inkling-small:free":                true,
-	"reflection/beam-free":                              true,
-	"xingchen-agi/xing4.0-29b-a4b:free":                 true,
+	"reflection/beam-free":                               true,
+	"xingchen-agi/xing4.0-29b-a4b:free":                  true,
 	"nvidia/nemotron-3.5-content-safety:free":            true,
 }
 
@@ -242,6 +517,11 @@ type upstreamResponse struct {
 func main() {}
 
 func ensureAuthDescriptor() {
+	// Writing files is a side effect the operator must be able to switch off.
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CPA_NO_AUTH_DESCRIPTOR"))) {
+	case "1", "true", "yes", "on":
+		return
+	}
 	const authFileName = "cpa-freetier-plugin.json"
 	authContent := []byte(`{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}` + "\n")
 
@@ -259,12 +539,11 @@ func ensureAuthDescriptor() {
 		}
 	}
 
-	// 2. Target custom: environment variables or relative auth directories
+	// Only directories the operator named explicitly. Creating the descriptor in
+	// the process working directory by default was a surprise side effect.
 	candidates := []string{
 		os.Getenv("CPA_AUTH_DIR"),
 		os.Getenv("AUTH_DIR"),
-		"auth-dir",
-		".cli-proxy-api",
 	}
 	for _, dir := range candidates {
 		if dir == "" {
@@ -308,7 +587,10 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 	}
 	var raw []byte
 	if request != nil && requestLen > 0 {
-		raw = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
+		// requestLen is size_t and C.GoBytes takes a C.int, so the old form would
+		// truncate any payload above 2 GiB. Copy through an explicit slice instead.
+		raw = make([]byte, int(requestLen))
+		copy(raw, unsafe.Slice((*byte)(unsafe.Pointer(request)), int(requestLen)))
 	}
 	methodStr := C.GoString(method)
 	out, err := handleMethod(methodStr, raw)
@@ -347,12 +629,12 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 				"ConfigFields":     []any{},
 			},
 			"capabilities": map[string]any{
-				"model_provider":         true,
-				"executor":               true,
-				"executor_model_scope":   "static",
+				"model_provider":          true,
+				"executor":                true,
+				"executor_model_scope":    "static",
 				"executor_input_formats":  []string{"chat-completions"},
 				"executor_output_formats": []string{"chat-completions"},
-				"request_normalizer":     true,
+				"request_normalizer":      true,
 			},
 		})
 	case "request.normalize":
@@ -447,6 +729,7 @@ func normalizeRequest(payload []byte) ([]byte, error) {
 	}
 
 	if changed {
+		logDebug("normalizeRequest: stripped unsupported fields for model=%s", req.Model)
 		newBody, err := json.Marshal(bodyMap)
 		if err == nil {
 			return ok(payloadResponse{Body: json.RawMessage(newBody)})
@@ -475,8 +758,6 @@ func listModels() []map[string]any {
 		{"nemotron-3.5-super-vl-free", "Nemotron 3.5 Super VL Free (OpenCode)", 1000000, 65536, false},
 		{"cat-jam-free", "Cat Jam Free (OpenCode)", 1048576, 131072, true},
 		{"nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free (OpenCode)", 1000000, 65536, false},
-		{"muse-spark-1.2-contributor-free", "Muse Spark 1.2 Contributor Free", 1048576, 131072, true},
-		{"muse-spark-1.3-contributor-free", "Muse Spark 1.3 Contributor Free", 1048576, 131072, true},
 
 		// Kilo Free Tier (Active Curated Models)
 		{"kilo-auto/free", "Kilo Auto Free", 256000, 10000, false},
@@ -499,6 +780,10 @@ func listModels() []map[string]any {
 
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
+		// Never advertise a model the upstream has dropped.
+		if !modelHealthy(item.id) {
+			continue
+		}
 		out = append(out, map[string]any{
 			"ID":                         item.id,
 			"Object":                     "model",
@@ -529,7 +814,7 @@ func execute(raw []byte) ([]byte, error) {
 
 	var bodyBuf bytes.Buffer
 	scanner := bufio.NewScanner(resp.body)
-	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+	scanner.Buffer(make([]byte, 256*1024), maxSSELineBytes)
 	isSSE := false
 
 	for scanner.Scan() {
@@ -568,17 +853,24 @@ func executeStream(raw []byte) ([]byte, error) {
 	}
 
 	logMsg("executeStream start: model=%s, stream_id=%s", req.Model, req.StreamID)
+
+	// Exactly one close per stream, whichever path fails first.
+	var closeOnce sync.Once
+	finish := func(errStr string) {
+		closeOnce.Do(func() { closeStream(req.StreamID, errStr) })
+	}
+
 	go func() {
 		resp, callErr := callUpstream(req.Model, req.Payload, true)
 		if callErr != nil {
 			logMsg("executeStream callUpstream error: %v", callErr)
-			closeStream(req.StreamID, callErr.Error())
+			finish(callErr.Error())
 			return
 		}
 		defer resp.body.Close()
 
 		scanner := bufio.NewScanner(resp.body)
-		scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+		scanner.Buffer(make([]byte, 256*1024), maxSSELineBytes)
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -605,16 +897,16 @@ func executeStream(raw []byte) ([]byte, error) {
 
 			if errEmit := emitStream(req.StreamID, []byte(cleaned)); errEmit != nil {
 				logMsg("executeStream emitStream error: %v", errEmit)
-				closeStream(req.StreamID, errEmit.Error())
+				finish(errEmit.Error())
 				return
 			}
 		}
 		if scanErr := scanner.Err(); scanErr != nil {
 			logMsg("executeStream scanner error: %v", scanErr)
-			closeStream(req.StreamID, scanErr.Error())
+			finish(scanErr.Error())
 			return
 		}
-		closeStream(req.StreamID, "")
+		finish("")
 		logMsg("executeStream closed successfully: stream_id=%s", req.StreamID)
 	}()
 
@@ -651,12 +943,107 @@ func decodeRequest(raw []byte) (executorRequest, error) {
 	return req, nil
 }
 
+// ── Model health ────────────────────────────────────────────────────────────
+//
+// Upstream catalogs rotate without notice: ids disappear and come back as 404 /
+// "does not exist" / "model is unavailable". Re-advertising a dead id makes an
+// agent pick it and fail, so a model that looks gone is hidden from the published
+// catalog for a while rather than offered again on every request.
+const modelUnhealthyTTL = 30 * time.Minute
+
+var (
+	modelHealthMu sync.Mutex
+	unhealthyTill = map[string]time.Time{}
+)
+
+// modelErrorStatuses are the upstream statuses that mean "this model is gone".
+var modelErrorStatuses = []string{"400", "404", "410"}
+
+// looksModelMissing decides whether an upstream error means the model itself is
+// gone. It requires a model-level client status AND catalogue wording, because a
+// bare phrase match would also catch a local error such as `file does not
+// exist`, hiding a model that is perfectly healthy.
+func looksModelMissing(msg string) bool {
+	m := strings.ToLower(strings.TrimSpace(msg))
+
+	status := false
+	for _, s := range modelErrorStatuses {
+		if strings.HasPrefix(m, s+" ") {
+			status = true
+			break
+		}
+	}
+	if !status {
+		return false
+	}
+	for _, needle := range []string{
+		"not found",
+		"does not exist",
+		"unknown model",
+		"unknown provider",
+		"model is unavailable",
+		"model_not_found",
+		"modeldeprecated",
+		"deprecated",
+	} {
+		if strings.Contains(m, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// markModelUnhealthy records upstream availability. A success clears the mark.
+func markModelUnhealthy(model string, err error) {
+	if model == "" {
+		return
+	}
+	modelHealthMu.Lock()
+	defer modelHealthMu.Unlock()
+
+	if err == nil {
+		if _, known := unhealthyTill[model]; known {
+			delete(unhealthyTill, model)
+			logMsg("model back in service: %s", model)
+		}
+		return
+	}
+	if !looksModelMissing(err.Error()) {
+		return
+	}
+	if _, known := unhealthyTill[model]; !known {
+		logMsg("model marked unavailable for %s (upstream error: %v)", modelUnhealthyTTL, err)
+	}
+	unhealthyTill[model] = time.Now().Add(modelUnhealthyTTL)
+}
+
+func modelHealthy(id string) bool {
+	modelHealthMu.Lock()
+	defer modelHealthMu.Unlock()
+	until, ok := unhealthyTill[id]
+	if !ok {
+		return true
+	}
+	if time.Now().After(until) {
+		delete(unhealthyTill, id)
+		return true
+	}
+	return false
+}
+
 func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse, error) {
 	cleanModel := strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/")
+	var (
+		resp *upstreamResponse
+		err  error
+	)
 	if kiloModels[model] || kiloModels[cleanModel] {
-		return callKilo(model, payload, stream)
+		resp, err = callKilo(model, payload, stream)
+	} else {
+		resp, err = callOpenCode(cleanModel, payload, stream)
 	}
-	return callOpenCode(cleanModel, payload, stream)
+	markModelUnhealthy(cleanModel, err)
+	return resp, err
 }
 
 func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse, error) {
@@ -665,13 +1052,17 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	if baseURL != "" {
 		targetURL = baseURL + "/inference/openai/v1/chat/completions"
 	} else if model == "muse-spark-1.3-contributor-free" || model == "muse-spark-1.2-contributor-free" {
+		// Dormant: both muse-spark free ids were retired upstream (400 unknown model /
+		// 410 ModelDeprecated) and are no longer advertised. Kept so a future
+		// Responses-only model can be routed here again.
 		targetURL = opencodeResponsesURL
 	}
 
-	logMsg("callOpenCode: targetURL=%s, payloadLen=%d, rawPayload=%s", targetURL, len(payload), string(payload))
+	// The body is never written to the log: it can carry the whole conversation.
+	logMsg("callOpenCode: start model=%s targetURL=%s payloadLen=%d payloadHash=%s", model, targetURL, len(payload), payloadFingerprint(payload))
 	transformedPayload := cloakOpencodePayload(payload, targetURL == opencodeResponsesURL)
 	sessionID := getOrCreateSession("opencode_global")
-	logMsg("callOpenCode: sessionID=%s, transformedLen=%d", sessionID, len(transformedPayload))
+	logDebug("callOpenCode: sessionID=%s transformedLen=%d", sessionID, len(transformedPayload))
 
 	headers := http.Header{
 		"Content-Type":          []string{"application/json"},
@@ -688,21 +1079,12 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	}
 
 	proxy := getOpenCodeProxy()
-	logMsg("callOpenCode: selected proxy=%v", proxy)
-	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
-		IdleConnTimeout:     90 * time.Second,
-	}
+	proxyKey := "env"
 	if proxy != nil {
-		transport.Proxy = http.ProxyURL(proxy)
-	} else {
-		transport.Proxy = http.ProxyFromEnvironment
+		proxyKey = proxy.String()
 	}
-	client := &http.Client{
-		Transport: transport,
-		// Do not set global Timeout for streaming SSE! It aborts long responses or hangs Do!
-	}
+	logDebug("callOpenCode: egress=%s", proxyKey)
+	client := getHTTPClient(true)
 
 	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(transformedPayload))
 	if err != nil {
@@ -710,12 +1092,17 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	}
 	req.Header = headers
 
-	logMsg("callOpenCode: sending Do(req)...")
+	started := time.Now()
 	res, err := client.Do(req)
-	logMsg("callOpenCode: Do(req) returned err=%v, res=%v", err, res != nil)
 	if err != nil {
+		// A dead egress is the most common failure: drop both caches so the next
+		// call re-probes the proxy and rebuilds its connection pool.
+		invalidateTransport(proxyKey)
+		invalidateOpenCodeProxy()
+		logMsg("callOpenCode: transport error model=%s egress=%s after %s: %v", model, proxyKey, time.Since(started).Round(time.Millisecond), err)
 		return nil, err
 	}
+	logMsg("callOpenCode: model=%s egress=%s status=%d in %s", model, proxyKey, res.StatusCode, time.Since(started).Round(time.Millisecond))
 	if res.StatusCode >= 400 {
 		defer res.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 8192))
@@ -769,7 +1156,9 @@ func cloakOpencodePayload(raw []byte, isResponses bool) []byte {
 		return raw
 	}
 
-	sanitizePayloadMap(body)
+	if sanitizePayloadMap(body) {
+		logDebug("cloakOpencodePayload: stripped unsupported parameters")
+	}
 
 	if m, ok := body["model"].(string); ok {
 		body["model"] = strings.TrimPrefix(m, "opencode/")
@@ -906,16 +1295,26 @@ func genSessionID() string {
 	return genSessionIDLocked()
 }
 
+// sessionTTL is how long a warm upstream session stays usable before a fresh
+// affinity id is generated.
+const sessionTTL = 30 * time.Minute
+
 func getOrCreateSession(key string) string {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 
 	now := time.Now()
 	if entry, ok := cachedSessions[key]; ok {
-		if now.Sub(entry.lastUsed) < 30*time.Minute {
+		if now.Sub(entry.lastUsed) < sessionTTL {
 			entry.lastUsed = now
 			cachedSessions[key] = entry
 			return entry.sessionID
+		}
+	}
+	// Expired entries used to be left behind forever; keep the map bounded.
+	for k, entry := range cachedSessions {
+		if now.Sub(entry.lastUsed) >= sessionTTL {
+			delete(cachedSessions, k)
 		}
 	}
 	id := genSessionIDLocked()

@@ -10,6 +10,10 @@ on:
         description: 'Release tag (e.g. v1.2.0)'
         required: false
         default: 'v1.2.0'
+      skip_release:
+        description: 'Build and test everything, but do not publish a GitHub release'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -72,7 +76,7 @@ jobs:
           CC: ${{ matrix.cc }}
         run: |
           mkdir -p build/${{ matrix.target }}
-          go build -buildmode=c-shared -ldflags="-s -w" -o build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }} main.go
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }} main.go
           sed 's/"entrypoint": "cpa-freetier-plugin.so"/"entrypoint": "cpa-freetier-plugin.${{ matrix.ext }}"/' plugin.json > build/${{ matrix.target }}/cpa-freetier-plugin.json
 
       - name: Package Release Archives
@@ -135,7 +139,7 @@ jobs:
           CGO_LDFLAGS: ${{ matrix.cflags }}
         run: |
           mkdir -p build/${{ matrix.target }}
-          go build -buildmode=c-shared -ldflags="-s -w" -o build/${{ matrix.target }}/cpa-freetier-plugin.dylib main.go
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.dylib main.go
           cp build/${{ matrix.target }}/cpa-freetier-plugin.dylib build/${{ matrix.target }}/cpa-freetier-plugin.so
           sed 's/"entrypoint": "cpa-freetier-plugin.so"/"entrypoint": "cpa-freetier-plugin.dylib"/' plugin.json > build/${{ matrix.target }}/cpa-freetier-plugin.json
 
@@ -155,9 +159,174 @@ jobs:
           path: dist/*.zip
           retention-days: 1
 
+  verify:
+    name: Verify (vet, tests, model catalogue)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Vet
+        run: CGO_ENABLED=1 go vet ./...
+
+      - name: Unit tests
+        run: CGO_ENABLED=1 go test ./...
+
+      # Fails when the plugin advertises a model id the upstream catalogue dropped
+      # (v1.2.4 shipped five dead Kilo ids and three router-map entries with no
+      # catalogue entry).
+      - name: Every advertised model still exists upstream
+        run: ./scripts/check-models.sh main.go
+
+      # Version metadata used to drift: main.go, plugin.json and the README were
+      # bumped by hand. plugin.json is now checked against the tag before release.
+      - name: Version metadata matches the tag
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "not a tag build — skipping the version match check"
+            exit 0
+          fi
+          TAG="${GITHUB_REF#refs/tags/}"
+          VER="${TAG#v}"
+          PLUGIN_VER="$(python3 -c 'import json;print(json.load(open("plugin.json"))["version"])')"
+          if [ "$PLUGIN_VER" != "$VER" ]; then
+            echo "::error::plugin.json version ($PLUGIN_VER) does not match tag ($TAG)"
+            exit 1
+          fi
+          echo "plugin.json version matches tag $TAG"
+
+  portability:
+    name: Tests on ${{ matrix.os }} (cgo)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      # The plugin is cgo (c-shared), so the tests need a C compiler even to
+      # build. macOS ships clang; Windows does not ship one on PATH.
+      - name: Install MinGW
+        if: runner.os == 'Windows'
+        shell: bash
+        run: choco install mingw -y --no-progress
+
+      - name: Locate MinGW
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          gcc_path="$(find /c/ProgramData /c/tools -name gcc.exe -print -quit 2>/dev/null)"
+          if [ -z "$gcc_path" ]; then
+            echo "::error::no C compiler found — cgo tests cannot build"
+            exit 1
+          fi
+          bin_dir="$(dirname "$gcc_path")"
+          echo "using $bin_dir"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+
+      - name: Vet
+        env:
+          CGO_ENABLED: '1'
+        run: go vet ./...
+
+      - name: Unit tests
+        env:
+          CGO_ENABLED: '1'
+        run: go test ./...
+
+      # Compiling the shared library is the check the release build depends on.
+      - name: Build shared library
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          ext="${{ runner.os == 'Windows' && 'dll' || 'dylib' }}"
+          mkdir -p build/portability
+          if go build -buildmode=c-shared -trimpath -o "build/portability/cpa-freetier-plugin.${ext}" main.go 2>&1 | tee build-portability.log; then
+            ls -la build/portability
+          else
+            while IFS= read -r line; do echo "::error::$line"; done < <(tail -8 build-portability.log)
+            exit 1
+          fi
+
+  cross-compile:
+    name: Cross-compile ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_arm64
+            goos: linux
+            goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            toolchain: gcc-aarch64-linux-gnu
+            ext: so
+          - target: windows_amd64
+            goos: windows
+            goarch: amd64
+            cc: x86_64-w64-mingw32-gcc
+            toolchain: gcc-mingw-w64-x86-64
+            ext: dll
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.toolchain }}
+
+      - name: Build shared library
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
+        run: |
+          set -o pipefail
+          ${{ matrix.cc }} --version
+          mkdir -p build/${{ matrix.target }}
+          # c-shared needs a platform-appropriate extension (.so / .dll): the
+          # linker derives the import library from it.
+          if go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
+               -o "build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }}" main.go 2>&1 | tee build-${{ matrix.target }}.log; then
+            ls -la build/${{ matrix.target }}
+          else
+            # The job log is not always retrievable, but workflow annotations are:
+            # surface the real linker error here.
+            while IFS= read -r line; do echo "::error::$line"; done < <(tail -8 build-${{ matrix.target }}.log)
+            exit 1
+          fi
+
   release:
     name: Publish Full-Platform Release
-    needs: [build-linux-windows, build-darwin]
+    needs: [verify, portability, cross-compile, build-linux-windows, build-darwin]
+    # A manual run can therefore exercise every build and test job without
+    # publishing anything: workflow_dispatch with skip_release=true.
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_release != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

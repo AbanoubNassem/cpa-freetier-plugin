@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.5-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.6-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -39,8 +39,8 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 | `nemotron-3.5-super-vl-free` | Multimodal vision-language reasoning model | **1,000,000** | 65,536 |
 | `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
 | `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
-| `muse-spark-1.2-contributor-free` | Collaborative contributor reasoning model | **1,048,576** | 131,072 |
-| `muse-spark-1.3-contributor-free` | Enhanced collaborative multimodal model | **1,048,576** | 131,072 |
+
+> **Note on retired ids:** `muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free` were retired upstream (`400 unknown model` / `410 ModelDeprecated`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
 
 > **Note on `jev-1.13-free`:** While present in OpenCode's backend catalog, `jev-1.13-free` rejects standard chat completions upstream (`ModelProtocolUnsupported`) and is omitted from the chat provider catalog.
 
@@ -84,7 +84,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -92,7 +92,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -100,7 +100,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -108,13 +108,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.5_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.2.6_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
@@ -150,7 +150,66 @@ export OPENCODE_PROXY="http://127.0.0.1:8080"
 export OPENCODE_PROXY="socks5h://127.0.0.1:1080"
 ```
 
-If `OPENCODE_PROXY` is unset, the plugin connects direct to upstream via the host's standard network interface.
+If `OPENCODE_PROXY` is unset, the plugin probes a residential/local pool and otherwise falls back to the host's standard network interface.
+
+> **Datacenter egress is opt-in.** The OpenCode free tier rejects datacenter ASNs with `403 FreeTierError`, so the built-in Xray chains are **not** used as an OpenCode fallback. If you really want them, set `OPENCODE_ALLOW_DATACENTER=1` — expect 403s.
+
+---
+
+## 🛠 Environment Variables
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `OPENCODE_PROXY` | *(unset)* | Explicit egress for OpenCode (`http://`, `socks5h://`). Wins over the pools below. |
+| `OPENCODE_PROXY_POOL` | `127.0.0.1:8127` | Ordered candidates probed before falling back to the host network. Comma-separated `host:port` or full URLs. **Set it to an empty value to disable probing entirely** (recommended on a laptop/VPS that has no local proxy). |
+| `OPENCODE_DATACENTER_PROXY_POOL` | `127.0.0.1:8123..8126` | Only consulted when `OPENCODE_ALLOW_DATACENTER=1`. |
+| `OPENCODE_ALLOW_DATACENTER` | `0` | Allow datacenter egress for OpenCode. Off because it is rejected upstream. |
+| `CPA_FREETIER_LOG` | `<home>/.cli-proxy-api/logs/cpa-freetier-plugin.log` | Log destination (portable; falls back to `os.TempDir()` only if no home directory is resolvable). |
+| `CPA_FREETIER_DEBUG` | `0` | Verbose diagnostics. Request **bodies are never logged**, with or without this. |
+| `CPA_STRIP_FIELDS` | *(unset)* | Extra comma-separated request fields to strip before forwarding. |
+| `CPA_NO_AUTH_DESCRIPTOR` | `0` | Set to `1` to stop the plugin writing the provider descriptor file. |
+| `OPENCODE_BASE_URL` | *(unset)* | Override the OpenCode base URL. |
+
+Logs rotate at 8 MiB with a single `.1` generation kept, so the file cannot grow without bound. The log file is created `0600`.
+
+---
+
+## 💻 Running on a Laptop or Your Own VPS
+
+**Nothing extra is required.** The plugin has no dependency on this project's lab
+setup:
+
+* With no proxy configured it connects directly through the host's normal
+  network path (respecting `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`).
+* The built-in proxy pools are loopback addresses that simply do not answer
+  elsewhere; the probe fails and the request goes direct. If you would rather not
+  even probe, set `OPENCODE_PROXY_POOL=` (empty).
+* The log lands in your home directory, not in `/tmp`, and rotates.
+
+If you see `403 FreeTierError` from a model, that is an **egress-IP** decision by
+OpenCode — the free tier refuses hosts on datacenter ASNs. The fix is a
+residential/mobile egress, not a plugin setting:
+
+```bash
+export OPENCODE_PROXY="http://user:pass@your-residential-proxy:8080"
+# probing a pool instead of a single proxy
+export OPENCODE_PROXY_POOL="127.0.0.1:8127,proxy.example.net:3128"
+```
+
+If you see `500 Internal Server Error` with an empty body and an
+`x-opencode-log-id` header, that is the upstream gateway failing — the plugin
+reports it verbatim and the model is left alone.
+
+---
+
+## 🔒 Reliability Notes (v1.2.6)
+
+* **Bounded logging.** Request bodies are replaced by a length + short SHA-256 prefix. The previous build wrote the full conversation to a fixed path with no cap — on a 512 MiB tmpfs that reached 393 MiB in ~90 minutes.
+* **Connection reuse.** Transports are process-wide and cached per egress, with `ResponseHeaderTimeout` so a hung upstream cannot pin a goroutine forever.
+* **Correct fallback.** Datacenter proxies are no longer used for OpenCode; the reachability probe is cached for 30s instead of dialing on every request.
+* **Model health.** A model the upstream reports as missing (`404` / "does not exist" / "unknown provider") is temporarily hidden from the published catalog and restored automatically when it answers again.
+* **Bounded SSE lines.** A single `data:` line may reach 16 MiB; the old 2 MiB scanner limit aborted legitimately large tool-call streams.
+* **Exactly-once stream close**, session-cache sweeping, and size-safe C buffer copies.
 
 ---
 
