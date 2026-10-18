@@ -1,6 +1,6 @@
 {
   "name": "cpa-freetier-plugin",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Curated zero-key free AI models (Nemotron 550B, Space Bunny 1M, Step 3.7 Flash) with automatic agent payload sanitization.",
   "license": "MIT",
   "repository": "https://github.com/tsaQB/cpa-freetier-plugin",
