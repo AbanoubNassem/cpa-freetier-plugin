@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.4-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.5-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -47,22 +47,22 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 ### 2. Kilo AI Curated Models
 | Model Identifier | Specialization | Context Window | Max Output |
 | :--- | :--- | :--- | :--- |
+| `kilo-auto/free` | Smart router across active free pools | **256,000** | 10,000 |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | 550B flagship frontier reasoning model | **1,000,000** | 65,536 |
-| `nvidia/nemotron-3-super-120b-a12b:free` | 120B high-throughput reasoning model | **1,000,000** | 65,536 |
+| `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
+| `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 120B high-throughput reasoning model | **262,144** | 65,536 |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
 | `nvidia/nemotron-3.5-lightning:free` | Ultra-fast general assistant model | **1,000,000** | 65,536 |
-| `stealth/space-bunny-alpha` | 1M ultra-long context model | **1,000,000** | 65,536 |
-| `stepfun/step-3.7-flash:free` | Fast multi-step reasoning model | **262,144** | 262,144 |
-| `inclusionai/ling-3.0-flash-fin:free` | Finance & domain reasoning specialist | **262,144** | 32,768 |
-| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 65,536 |
+| `nvidia/nemotron-3.5-super-vl:free` | Multimodal vision-language reasoning | **1,000,000** | 65,536 |
 | `poolside/laguna-s-2.1:free` | Code synthesis & refactoring specialist | **262,144** | 32,768 |
 | `poolside/laguna-xs-2.1:free` | Lightweight low-latency code assistant | **262,144** | 32,768 |
+| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 65,536 |
 | `liquid/lfm-2.5-2.6b:free` | Liquid Neural Network adaptive model | **65,536** | 16,384 |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
-| `nex-agi/nex-n2.5-pro:free` | Agentic & complex multi-turn workflows | **256,000** | 32,000 |
-| `nex-agi/nex-n2.5-mini:free` | Ultra-low latency chat assistant | **256,000** | 32,000 |
-| `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
-| `kilo-auto/free` | Smart router across active free pools | **256,000** | 10,000 |
-| `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
+| `thinkingmachines/inkling-small:free` | Audio & multimodal reasoning model | **1,048,576** | 65,536 |
+| `reflection/beam-free` | 1M context general assistant model | **1,048,576** | 65,536 |
+| `xingchen-agi/xing4.0-29b-a4b:free` | 29B conversational reasoning model | **262,144** | 65,536 |
+| `nvidia/nemotron-3.5-content-safety:free` | Safety classification & guardrails | **128,000** | 32,768 |
 
 ---
 
@@ -70,23 +70,10 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 
 ### Method 1: CLIProxyAPI Plugin Store (1-Click Install)
 
-1. Ensure plugin store support is enabled in your `config.yaml`:
-   ```yaml
-   plugins:
-     enabled: true
-     store-sources:
-       - "https://raw.githubusercontent.com/tsaQB/cpa-freetier-plugin/master/registry.json"
-     configs:
-       cpa-freetier-plugin:
-         enabled: true
-   ```
-2. Open your CLIProxyAPI Management Center (`#/plugin-store`).
-3. Search for **CPA Free-Tier Models** and click **Install**.
-4. Create the provider descriptor in your `auth-dir` (default `~/.cli-proxy-api/`):
-   ```bash
-   echo '{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}' > ~/.cli-proxy-api/cpa-freetier-plugin.json
-   ```
-5. Restart CLIProxyAPI.
+1. Open your CLIProxyAPI Management Center (`#/plugin-store`).
+2. Search for **CPA Free-Tier Models** and click **Install**.
+3. **That's it!** The plugin automatically generates the provider descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) upon initialization.
+4. Restart CLIProxyAPI if prompted.
 
 ---
 
@@ -97,7 +84,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.4/cpa-freetier-plugin_1.2.4_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -105,7 +92,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.4/cpa-freetier-plugin_1.2.4_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -113,7 +100,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.4/cpa-freetier-plugin_1.2.4_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -121,13 +108,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.4/cpa-freetier-plugin_1.2.4_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.5/cpa-freetier-plugin_1.2.5_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.4_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.2.5_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:

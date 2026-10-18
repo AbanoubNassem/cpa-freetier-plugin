@@ -68,6 +68,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,7 +79,7 @@ import (
 const (
 	abiVersion    = 1
 	pluginID      = "cpa-freetier-plugin"
-	pluginVersion = "1.2.4"
+	pluginVersion = "1.2.5"
 
 	// OpenCode v2 Endpoints
 	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
@@ -185,24 +186,21 @@ var openCodeModels = map[string]bool{
 
 var kiloModels = map[string]bool{
 	"kilo-auto/free":                                    true,
-	"poolside/laguna-s-2.1:free":                         true,
-	"poolside/laguna-xs-2.1:free":                        true,
-	"cohere/north-mini-code:free":                       true,
 	"nvidia/nemotron-3-ultra-550b-a55b:free":            true,
+	"cohere/north-mini-code:free":                       true,
+	"openrouter/free":                                   true,
 	"nvidia/nemotron-3-super-120b-a12b:free":            true,
 	"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": true,
-	"openrouter/free":                                   true,
-	"dots-studio/dots-3-note-preview:free":               true,
-	"liquid/lfm-2.5-2.6b:free":                           true,
 	"nvidia/nemotron-3.5-lightning:free":                 true,
 	"nvidia/nemotron-3.5-super-vl:free":                 true,
+	"poolside/laguna-s-2.1:free":                         true,
+	"poolside/laguna-xs-2.1:free":                        true,
+	"dots-studio/dots-3-note-preview:free":               true,
+	"liquid/lfm-2.5-2.6b:free":                           true,
 	"thinkingmachines/inkling-small:free":                true,
+	"reflection/beam-free":                              true,
+	"xingchen-agi/xing4.0-29b-a4b:free":                 true,
 	"nvidia/nemotron-3.5-content-safety:free":            true,
-	"nex-agi/nex-n2.5-pro:free":                          true,
-	"nex-agi/nex-n2.5-mini:free":                         true,
-	"stepfun/step-3.7-flash:free":                       true,
-	"stealth/space-bunny-alpha":                          true,
-	"inclusionai/ling-3.0-flash-fin:free":                true,
 }
 
 type envelope struct {
@@ -243,6 +241,46 @@ type upstreamResponse struct {
 
 func main() {}
 
+func ensureAuthDescriptor() {
+	const authFileName = "cpa-freetier-plugin.json"
+	authContent := []byte(`{"disabled":false,"provider":"cpa-freetier-plugin","type":"cpa-freetier-plugin"}` + "\n")
+
+	// 1. Target standard: ~/.cli-proxy-api/ (Linux, macOS, Windows)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		primaryDir := filepath.Join(home, ".cli-proxy-api")
+		_ = os.MkdirAll(primaryDir, 0755)
+		targetPath := filepath.Join(primaryDir, authFileName)
+		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+			if err := os.WriteFile(targetPath, authContent, 0644); err == nil {
+				logMsg("auto-created auth descriptor: %s", targetPath)
+			} else {
+				logMsg("failed to create auth descriptor %s: %v", targetPath, err)
+			}
+		}
+	}
+
+	// 2. Target custom: environment variables or relative auth directories
+	candidates := []string{
+		os.Getenv("CPA_AUTH_DIR"),
+		os.Getenv("AUTH_DIR"),
+		"auth-dir",
+		".cli-proxy-api",
+	}
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			targetPath := filepath.Join(dir, authFileName)
+			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+				if err := os.WriteFile(targetPath, authContent, 0644); err == nil {
+					logMsg("auto-created auth descriptor in custom dir: %s", targetPath)
+				}
+			}
+		}
+	}
+}
+
 //export cliproxy_plugin_init
 func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_api) C.int {
 	if plugin == nil {
@@ -253,6 +291,7 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_a
 	plugin.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
 	plugin.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
 	plugin.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
+	ensureAuthDescriptor()
 	logMsg("plugin initialized")
 	return 0
 }
@@ -297,6 +336,7 @@ func cliproxyPluginShutdown() {
 func handleMethod(method string, raw []byte) ([]byte, error) {
 	switch method {
 	case "plugin.register", "plugin.reconfigure":
+		ensureAuthDescriptor()
 		return ok(map[string]any{
 			"schema_version": 1,
 			"metadata": map[string]any{
@@ -438,23 +478,23 @@ func listModels() []map[string]any {
 		{"muse-spark-1.2-contributor-free", "Muse Spark 1.2 Contributor Free", 1048576, 131072, true},
 		{"muse-spark-1.3-contributor-free", "Muse Spark 1.3 Contributor Free", 1048576, 131072, true},
 
-		// Kilo Free Tier
+		// Kilo Free Tier (Active Curated Models)
 		{"kilo-auto/free", "Kilo Auto Free", 256000, 10000, false},
+		{"nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra 550B Free (Kilo)", 1000000, 65536, true},
+		{"cohere/north-mini-code:free", "North Mini Code Free (Kilo)", 256000, 64000, false},
+		{"openrouter/free", "OpenRouter Free Auto (Kilo)", 200000, 65536, false},
+		{"nvidia/nemotron-3-super-120b-a12b:free", "Nemotron 3 Super 120B Free (Kilo)", 262144, 65536, true},
+		{"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "Nemotron 3 Nano Omni Free (Kilo)", 256000, 65536, true},
+		{"nvidia/nemotron-3.5-lightning:free", "Nemotron 3.5 Lightning Free (Kilo)", 1000000, 65536, false},
+		{"nvidia/nemotron-3.5-super-vl:free", "Nemotron 3.5 Super VL Free (Kilo)", 1000000, 65536, false},
 		{"poolside/laguna-s-2.1:free", "Poolside Laguna S 2.1 Free", 262144, 32768, false},
 		{"poolside/laguna-xs-2.1:free", "Laguna XS 2.1 Free (Kilo)", 262144, 32768, false},
-		{"cohere/north-mini-code:free", "North Mini Code Free (Kilo)", 256000, 64000, false},
-		{"nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra 550B Free (Kilo)", 1000000, 65536, true},
-		{"nvidia/nemotron-3-super-120b-a12b:free", "Nemotron 3 Super 120B Free (Kilo)", 1000000, 65536, true},
-		{"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "Nemotron 3 Nano Omni Free (Kilo)", 256000, 65536, true},
-		{"openrouter/free", "OpenRouter Free Auto (Kilo)", 200000, 65536, false},
 		{"dots-studio/dots-3-note-preview:free", "Dots3-Note Preview Free (Kilo)", 512000, 65536, false},
 		{"liquid/lfm-2.5-2.6b:free", "LiquidAI LFM2.5 2.6B Free (Kilo)", 65536, 16384, false},
-		{"nvidia/nemotron-3.5-lightning:free", "Nemotron 3.5 Lightning Free (Kilo)", 1000000, 65536, false},
-		{"nex-agi/nex-n2.5-pro:free", "Nex AGI N2.5 Pro Free", 256000, 32000, true},
-		{"nex-agi/nex-n2.5-mini:free", "Nex AGI N2.5 Mini Free", 256000, 32000, false},
-		{"stepfun/step-3.7-flash:free", "Step 3.7 Flash Free (Kilo)", 262144, 262144, false},
-		{"stealth/space-bunny-alpha", "Space Bunny Alpha (1M)", 1000000, 65536, false},
-		{"inclusionai/ling-3.0-flash-fin:free", "Ling 3.0 Flash Fin Free (Kilo)", 262144, 32768, false},
+		{"thinkingmachines/inkling-small:free", "Inkling Small Free (Kilo)", 1048576, 65536, false},
+		{"reflection/beam-free", "Reflection Beam Free (Kilo)", 1048576, 65536, false},
+		{"xingchen-agi/xing4.0-29b-a4b:free", "Xingchen 4.0 29B Free (Kilo)", 262144, 65536, false},
+		{"nvidia/nemotron-3.5-content-safety:free", "Nemotron 3.5 Content Safety Free (Kilo)", 128000, 32768, false},
 	}
 
 	out := make([]map[string]any, 0, len(items))
