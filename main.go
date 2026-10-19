@@ -447,10 +447,12 @@ func getHTTPClient(forOpenCode bool) *http.Client {
 }
 
 var openCodeModels = map[string]bool{
+	"minimax-m3.1-flash-free":     true,
+	"nemotron-3-ultra-free":       true,
+	"exo-free":                    true,
 	"glm-5.3-flash-free":          true,
 	"big-pickle":                  true,
 	"deepseek-v4.1-flash-free":    true,
-	"space-bunny-free":            true,
 	"cat-jam-free":                true,
 	"mimo-v2.6-flash-free":        true,
 	"beam-free":                   true,
@@ -748,10 +750,12 @@ func listModels() []map[string]any {
 
 	items := []modelDef{
 		// OpenCode Free Tier (9router v2 protocol)
+		{"minimax-m3.1-flash-free", "MiniMax M3.1 Flash Free (OpenCode)", 1000000, 512000, true},
+		{"nemotron-3-ultra-free", "Nemotron 3 Ultra Free (OpenCode)", 1000000, 128000, true},
+		{"exo-free", "Exo Free (OpenCode)", 1048576, 131072, true},
 		{"glm-5.3-flash-free", "GLM 5.3 Flash Free (OpenCode)", 200000, 32768, true},
 		{"big-pickle", "Big Pickle Free (OpenCode)", 200000, 32000, true},
 		{"deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free (OpenCode)", 1000000, 384000, true},
-		{"space-bunny-free", "Space Bunny Free (OpenCode)", 1048576, 131072, true},
 		{"mimo-v2.6-flash-free", "MiMo v2.6 Flash Free (OpenCode)", 262144, 65536, true},
 		{"beam-free", "Beam Free (OpenCode)", 200000, 32768, true},
 		{"longcat-2.5-preview-free", "LongCat 2.5 Preview Free (OpenCode)", 1000000, 65536, true},

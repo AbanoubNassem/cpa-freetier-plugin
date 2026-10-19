@@ -29,10 +29,12 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 ### 1. OpenCode Zen Frontier Models (Zero-Key)
 | Model Identifier | Parameter Size / Specialization | Context Window | Max Output |
 | :--- | :--- | :--- | :--- |
+| `minimax-m3.1-flash-free` | Frontier multimodal reasoning with 1M context & 512k output | **1,000,000** | 512,000 |
+| `nemotron-3-ultra-free` | 1M context open-weight reasoning flagship (OpenCode) | **1,000,000** | 128,000 |
+| `exo-free` | Free-tier preview reasoning model with multimodal vision | **1,048,576** | 131,072 |
 | `glm-5.3-flash-free` | Flagship multimodal agentic reasoning model | **200,000** | 32,768 |
 | `big-pickle` | Frontier deliberate deep-thought reasoning model | **200,000** | 32,000 |
 | `deepseek-v4.1-flash-free` | DeepSeek V4.1 Flash reasoning & code specialist | **1,000,000** | 384,000 |
-| `space-bunny-free` | Ultra-long context frontier model | **1,048,576** | 131,072 |
 | `mimo-v2.6-flash-free` | Xiaomi MiMo 2.6 Flash reasoning & instruction model | **262,144** | 65,536 |
 | `beam-free` | Low-latency versatile general chat model | **200,000** | 32,768 |
 | `longcat-2.5-preview-free` | 1M context long-document reasoning specialist | **1,000,000** | 65,536 |
@@ -40,7 +42,7 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 | `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
 | `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
 
-> **Note on retired ids:** `muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free` were retired upstream (`400 unknown model` / `410 ModelDeprecated`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
+> **Note on retired ids:** `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
 
 > **Note on `jev-1.13-free`:** While present in OpenCode's backend catalog, `jev-1.13-free` rejects standard chat completions upstream (`ModelProtocolUnsupported`) and is omitted from the chat provider catalog.
 
