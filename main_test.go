@@ -53,10 +53,14 @@ func TestCloakOpencodePayloadKeepsGateFingerprint(t *testing.T) {
 	if body["tool_choice"] != "auto" {
 		t.Error("tool_choice must be auto")
 	}
-	for _, stripped := range []string{"reasoning_effort", "enable_thinking"} {
-		if _, present := body[stripped]; present {
-			t.Errorf("%s should have been stripped", stripped)
-		}
+	// enable_thinking is rejected upstream (400 invalid_request) so it is still
+	// removed. reasoning_effort is accepted and must survive — see
+	// TestSanitizerKeepsReasoningEffort.
+	if _, present := body["enable_thinking"]; present {
+		t.Error("enable_thinking should have been stripped")
+	}
+	if got := body["reasoning_effort"]; got != "high" {
+		t.Errorf("reasoning_effort must be forwarded untouched, got %v", got)
 	}
 
 	// The official read/shell declarations must be present, and the caller's own
@@ -386,6 +390,70 @@ func TestNormalizeRequestStripsUnsupportedFields(t *testing.T) {
 	}
 	if cleaned["model"] != "deepseek-v4.1-flash-free" {
 		t.Error("model must be preserved")
+	}
+}
+
+// The upstream free-tier gateway accepts reasoning_effort (verified 200 OK on
+// every advertised model) and it changes how much the model reasons, so it
+// must not be removed from the request. See issue #7.
+func TestSanitizerKeepsReasoningEffort(t *testing.T) {
+	t.Setenv("CPA_STRIP_FIELDS", "")
+	t.Setenv("CPA_KEEP_FIELDS", "")
+
+	body := map[string]any{
+		"model":            "deepseek-v4.1-flash-free",
+		"reasoning_effort": "high",
+		"enable_thinking":  true,
+		"thinking_budget":  2048,
+	}
+
+	sanitizePayloadMap(body)
+
+	if got := body["reasoning_effort"]; got != "high" {
+		t.Errorf("reasoning_effort must survive sanitization, got %v", got)
+	}
+	for _, banned := range []string{"enable_thinking", "thinking_budget"} {
+		if _, present := body[banned]; present {
+			t.Errorf("%s must still be stripped (upstream rejects it)", banned)
+		}
+	}
+}
+
+// CPA_KEEP_FIELDS is the escape hatch for a deployment whose upstream does
+// accept one of the normally-stripped parameters.
+func TestKeepFieldsOverridesStripList(t *testing.T) {
+	t.Setenv("CPA_STRIP_FIELDS", "")
+	t.Setenv("CPA_KEEP_FIELDS", "enable_thinking, thinking_budget")
+
+	body := map[string]any{
+		"model":           "deepseek-v4.1-flash-free",
+		"enable_thinking": true,
+		"thinking_budget": 2048,
+		"web_search":      true,
+	}
+
+	sanitizePayloadMap(body)
+
+	for _, kept := range []string{"enable_thinking", "thinking_budget"} {
+		if _, present := body[kept]; !present {
+			t.Errorf("%s must be kept when listed in CPA_KEEP_FIELDS", kept)
+		}
+	}
+	if _, present := body["web_search"]; present {
+		t.Error("web_search is not in CPA_KEEP_FIELDS and must be stripped")
+	}
+}
+
+// CPA_STRIP_FIELDS can add a field, and CPA_KEEP_FIELDS wins over it.
+func TestKeepFieldsBeatsStripFields(t *testing.T) {
+	t.Setenv("CPA_STRIP_FIELDS", "reasoning_effort")
+	t.Setenv("CPA_KEEP_FIELDS", "reasoning_effort")
+
+	body := map[string]any{"reasoning_effort": "low"}
+	sanitizePayloadMap(body)
+
+	if got := body["reasoning_effort"]; got != "low" {
+		t.Errorf("CPA_KEEP_FIELDS must win over CPA_STRIP_FIELDS, got %v", got)
 	}
 }
 

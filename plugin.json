@@ -1,6 +1,6 @@
 {
   "name": "cpa-freetier-plugin",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Curated zero-key free AI models (OpenCode Zen free tier + Kilo AI) with automatic agent payload sanitization.",
   "license": "MIT",
   "repository": "https://github.com/tsaQB/cpa-freetier-plugin",

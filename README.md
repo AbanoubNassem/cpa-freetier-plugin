@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.6-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.7-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -15,7 +15,7 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 
 * **Zero-Key & Zero-Config:** Ready to use immediately. No account generation, credit cards, or API keys required.
 * **OpenCode v2 Wire Protocol:** Fully compliant with OpenCode's v2 CLI contract (`opencode/latest/2.0.32/cli`), descending session affinity, and automatic tool declaration spoofing to prevent `403 FreeTierError`.
-* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`reasoning_effort`, `thinking`, `enable_thinking`, `thinking_budget`, `thinking_config`, etc.) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**. Supports custom fields via the `CPA_STRIP_FIELDS` environment variable.
+* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`thinking`, `enable_thinking`, `thinking_budget`, `thinking_config`, `search`, `web_search`, `return_citations`) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**. `reasoning_effort` is deliberately **kept** — the upstream gateway accepts it and it controls how much the model reasons. Custom fields via `CPA_STRIP_FIELDS` (add) and `CPA_KEEP_FIELDS` (re-enable).
 * **Dual Execution Modes:**
   * **Native Zero-Buffering Streaming:** Emits raw SSE chunks via host callbacks (`host.stream.emit`) with clean termination on `[DONE]`.
   * **Intelligent Non-Streaming Assembler:** Seamlessly translates streaming upstream responses into full OpenAI-standard `chat.completion` JSON payloads.
@@ -49,22 +49,23 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 ### 2. Kilo AI Curated Models
 | Model Identifier | Specialization | Context Window | Max Output |
 | :--- | :--- | :--- | :--- |
-| `kilo-auto/free` | Smart router across active free pools | **256,000** | 10,000 |
+| `kilo-auto/free` | Smart router across active free pools | **256,000** | 32,768 |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | 550B flagship frontier reasoning model | **1,000,000** | 65,536 |
+| `minimax/minimax-m3.1-flash:free` | Multimodal frontier reasoning (text/image/video) | **1,000,000** | 524,288 |
 | `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
 | `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
-| `nvidia/nemotron-3-super-120b-a12b:free` | 120B high-throughput reasoning model | **262,144** | 65,536 |
 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
 | `nvidia/nemotron-3.5-lightning:free` | Ultra-fast general assistant model | **1,000,000** | 65,536 |
-| `nvidia/nemotron-3.5-super-vl:free` | Multimodal vision-language reasoning | **1,000,000** | 65,536 |
+| `nvidia/nemotron-3.5-super-vl:free` | Multimodal vision-language reasoning | **1,000,000** | 131,072 |
 | `poolside/laguna-s-2.1:free` | Code synthesis & refactoring specialist | **262,144** | 32,768 |
 | `poolside/laguna-xs-2.1:free` | Lightweight low-latency code assistant | **262,144** | 32,768 |
-| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 65,536 |
-| `liquid/lfm-2.5-2.6b:free` | Liquid Neural Network adaptive model | **65,536** | 16,384 |
-| `thinkingmachines/inkling-small:free` | Audio & multimodal reasoning model | **1,048,576** | 65,536 |
-| `reflection/beam-free` | 1M context general assistant model | **1,048,576** | 65,536 |
-| `xingchen-agi/xing4.0-29b-a4b:free` | 29B conversational reasoning model | **262,144** | 65,536 |
-| `nvidia/nemotron-3.5-content-safety:free` | Safety classification & guardrails | **128,000** | 32,768 |
+| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 460,800 |
+| `liquid/lfm-2.5-2.6b:free` | Liquid Neural Network adaptive model | **65,536** | 8,192 |
+| `reflection/beam-free` | 1M context general assistant model | **1,048,576** | 131,072 |
+| `xingchen-agi/xing4.0-29b-a4b:free` | 29B conversational reasoning model | **262,144** | 235,929 |
+| `nvidia/nemotron-3.5-content-safety:free` | Safety classification & guardrails | **128,000** | 8,192 |
+
+> **Note on retired Kilo ids:** `thinkingmachines/inkling-small:free` and `nvidia/nemotron-3-super-120b-a12b:free` were removed upstream (`404 The requested model is currently unavailable`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
 
 ---
 
@@ -86,7 +87,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -94,7 +95,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -102,7 +103,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -110,13 +111,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.6/cpa-freetier-plugin_1.2.6_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.6_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.2.7_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
@@ -169,6 +170,7 @@ If `OPENCODE_PROXY` is unset, the plugin probes a residential/local pool and oth
 | `CPA_FREETIER_LOG` | `<home>/.cli-proxy-api/logs/cpa-freetier-plugin.log` | Log destination (portable; falls back to `os.TempDir()` only if no home directory is resolvable). |
 | `CPA_FREETIER_DEBUG` | `0` | Verbose diagnostics. Request **bodies are never logged**, with or without this. |
 | `CPA_STRIP_FIELDS` | *(unset)* | Extra comma-separated request fields to strip before forwarding. |
+| `CPA_KEEP_FIELDS` | *(unset)* | Comma-separated request fields to keep even if they are in the default strip list. Wins over `CPA_STRIP_FIELDS`. |
 | `CPA_NO_AUTH_DESCRIPTOR` | `0` | Set to `1` to stop the plugin writing the provider descriptor file. |
 | `OPENCODE_BASE_URL` | *(unset)* | Override the OpenCode base URL. |
 
@@ -204,7 +206,7 @@ reports it verbatim and the model is left alone.
 
 ---
 
-## 🔒 Reliability Notes (v1.2.6)
+## 🔒 Reliability Notes (v1.2.7)
 
 * **Bounded logging.** Request bodies are replaced by a length + short SHA-256 prefix. The previous build wrote the full conversation to a fixed path with no cap — on a 512 MiB tmpfs that reached 393 MiB in ~90 minutes.
 * **Connection reuse.** Transports are process-wide and cached per egress, with `ResponseHeaderTimeout` so a hung upstream cannot pin a goroutine forever.
@@ -212,6 +214,7 @@ reports it verbatim and the model is left alone.
 * **Model health.** A model the upstream reports as missing (`404` / "does not exist" / "unknown provider") is temporarily hidden from the published catalog and restored automatically when it answers again.
 * **Bounded SSE lines.** A single `data:` line may reach 16 MiB; the old 2 MiB scanner limit aborted legitimately large tool-call streams.
 * **Exactly-once stream close**, session-cache sweeping, and size-safe C buffer copies.
+* **`reasoning_effort` is forwarded.** The upstream gateway accepts it on every advertised model and it measurably changes how much the model reasons, so the sanitizer no longer removes it. Parameters the upstream genuinely rejects (`enable_thinking`, `thinking_budget`, …) are still stripped, and `CPA_KEEP_FIELDS` re-enables any of them for a deployment whose upstream tolerates them.
 
 ---
 

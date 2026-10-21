@@ -100,7 +100,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.2.6"
+var pluginVersion = "1.2.7"
 
 const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 const sessionPrefixMask = (uint64(1) << 48) - 1
@@ -464,9 +464,9 @@ var openCodeModels = map[string]bool{
 var kiloModels = map[string]bool{
 	"kilo-auto/free":                                     true,
 	"nvidia/nemotron-3-ultra-550b-a55b:free":             true,
+	"minimax/minimax-m3.1-flash:free":                    true,
 	"cohere/north-mini-code:free":                        true,
 	"openrouter/free":                                    true,
-	"nvidia/nemotron-3-super-120b-a12b:free":             true,
 	"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": true,
 	"nvidia/nemotron-3.5-lightning:free":                 true,
 	"nvidia/nemotron-3.5-super-vl:free":                  true,
@@ -474,7 +474,6 @@ var kiloModels = map[string]bool{
 	"poolside/laguna-xs-2.1:free":                        true,
 	"dots-studio/dots-3-note-preview:free":               true,
 	"liquid/lfm-2.5-2.6b:free":                           true,
-	"thinkingmachines/inkling-small:free":                true,
 	"reflection/beam-free":                               true,
 	"xingchen-agi/xing4.0-29b-a4b:free":                  true,
 	"nvidia/nemotron-3.5-content-safety:free":            true,
@@ -675,8 +674,23 @@ type payloadResponse struct {
 	Body json.RawMessage `json:"Body"`
 }
 
+// defaultSanitizeFields are request parameters the free-tier gateways reject.
+//
+// reasoning_effort is deliberately NOT here: the OpenCode v2 gateway accepts it
+// (verified 200 OK on every advertised model) and it measurably changes how
+// much the model reasons — `low` produced ~84-133 reasoning characters,
+// `high` ~271-339, unset ~523-589 on the same prompt. Agent harnesses such as
+// DeepSeek Harness send it on every turn, so stripping it silently removed the
+// user's reasoning-depth control.
+//
+// The fields below are still rejected upstream with `400 invalid_request`
+// ("unknown parameter") on a per-model basis — enable_thinking and
+// thinking_budget fail on glm-5.3-flash-free, cat-jam-free and beam-free — so
+// they are removed before the request leaves the plugin.
+//
+// CPA_KEEP_FIELDS re-enables any of them for a deployment whose upstream does
+// accept them, so the list is not a permanent verdict.
 var defaultSanitizeFields = []string{
-	"reasoning_effort",
 	"thinking",
 	"enable_thinking",
 	"thinking_budget",
@@ -684,6 +698,19 @@ var defaultSanitizeFields = []string{
 	"search",
 	"web_search",
 	"return_citations",
+}
+
+// keepFields returns the set of parameter names that must survive sanitization
+// even when they appear in the strip list.
+func keepFields() map[string]bool {
+	keep := make(map[string]bool)
+	for _, f := range strings.Split(os.Getenv("CPA_KEEP_FIELDS"), ",") {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			keep[f] = true
+		}
+	}
+	return keep
 }
 
 func sanitizePayloadMap(bodyMap map[string]any) bool {
@@ -697,7 +724,11 @@ func sanitizePayloadMap(bodyMap map[string]any) bool {
 			}
 		}
 	}
+	keep := keepFields()
 	for _, f := range fieldsToStrip {
+		if keep[f] {
+			continue
+		}
 		if _, exists := bodyMap[f]; exists {
 			delete(bodyMap, f)
 			changed = true
@@ -764,22 +795,21 @@ func listModels() []map[string]any {
 		{"nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free (OpenCode)", 1000000, 65536, false},
 
 		// Kilo Free Tier (Active Curated Models)
-		{"kilo-auto/free", "Kilo Auto Free", 256000, 10000, false},
+		{"kilo-auto/free", "Kilo Auto Free", 256000, 32768, false},
 		{"nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra 550B Free (Kilo)", 1000000, 65536, true},
+		{"minimax/minimax-m3.1-flash:free", "MiniMax M3.1 Flash Free (Kilo)", 1000000, 524288, true},
 		{"cohere/north-mini-code:free", "North Mini Code Free (Kilo)", 256000, 64000, false},
 		{"openrouter/free", "OpenRouter Free Auto (Kilo)", 200000, 65536, false},
-		{"nvidia/nemotron-3-super-120b-a12b:free", "Nemotron 3 Super 120B Free (Kilo)", 262144, 65536, true},
 		{"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "Nemotron 3 Nano Omni Free (Kilo)", 256000, 65536, true},
 		{"nvidia/nemotron-3.5-lightning:free", "Nemotron 3.5 Lightning Free (Kilo)", 1000000, 65536, false},
-		{"nvidia/nemotron-3.5-super-vl:free", "Nemotron 3.5 Super VL Free (Kilo)", 1000000, 65536, false},
+		{"nvidia/nemotron-3.5-super-vl:free", "Nemotron 3.5 Super VL Free (Kilo)", 1000000, 131072, false},
 		{"poolside/laguna-s-2.1:free", "Poolside Laguna S 2.1 Free", 262144, 32768, false},
 		{"poolside/laguna-xs-2.1:free", "Laguna XS 2.1 Free (Kilo)", 262144, 32768, false},
-		{"dots-studio/dots-3-note-preview:free", "Dots3-Note Preview Free (Kilo)", 512000, 65536, false},
-		{"liquid/lfm-2.5-2.6b:free", "LiquidAI LFM2.5 2.6B Free (Kilo)", 65536, 16384, false},
-		{"thinkingmachines/inkling-small:free", "Inkling Small Free (Kilo)", 1048576, 65536, false},
-		{"reflection/beam-free", "Reflection Beam Free (Kilo)", 1048576, 65536, false},
-		{"xingchen-agi/xing4.0-29b-a4b:free", "Xingchen 4.0 29B Free (Kilo)", 262144, 65536, false},
-		{"nvidia/nemotron-3.5-content-safety:free", "Nemotron 3.5 Content Safety Free (Kilo)", 128000, 32768, false},
+		{"dots-studio/dots-3-note-preview:free", "Dots3-Note Preview Free (Kilo)", 512000, 460800, false},
+		{"liquid/lfm-2.5-2.6b:free", "LiquidAI LFM2.5 2.6B Free (Kilo)", 65536, 8192, false},
+		{"reflection/beam-free", "Reflection Beam Free (Kilo)", 1048576, 131072, false},
+		{"xingchen-agi/xing4.0-29b-a4b:free", "Xingchen 4.0 29B Free (Kilo)", 262144, 235929, false},
+		{"nvidia/nemotron-3.5-content-safety:free", "Nemotron 3.5 Content Safety Free (Kilo)", 128000, 8192, false},
 	}
 
 	out := make([]map[string]any, 0, len(items))
