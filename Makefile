@@ -37,6 +37,14 @@ vet:
 check-models:
 	./scripts/check-models.sh main.go
 
+# Calls every advertised model for real. Catalogue presence is not liveness:
+# an id can stay itemised while the provider answers 404. Needs residential
+# egress for real verdicts — the free tier rejects datacenter ASNs.
+#
+#   make probe-models PROBE_PROXY=http://127.0.0.1:8127
+probe-models:
+	./scripts/probe-models.sh main.go
+
 verify: vet test check-models
 
 clean:

@@ -178,6 +178,21 @@ Logs rotate at 8 MiB with a single `.1` generation kept, so the file cannot grow
 
 ---
 
+## 🩺 Verifying the Catalogue
+
+Two scripts, because catalogue presence is not liveness:
+
+| Command | What it does |
+| :--- | :--- |
+| `make check-models` | Diffs the advertised ids against the live upstream catalogues. Fails the build when an id vanished from the catalogue. |
+| `make probe-models PROBE_PROXY=http://127.0.0.1:8127` | **Calls** every advertised model and classifies the answer: alive / dead / inconclusive. Fails the build on a dead id. |
+
+`check-models` alone is not enough: `nvidia/nemotron-3-super-120b-a12b:free` was still itemised in the Kilo catalogue while every live call returned `404 The requested model is currently unavailable`. The probe is what catches that class of drift.
+
+`probe-models` needs **residential** egress for real verdicts — the free tier answers datacenter ASNs with `403 FreeTierError`, which is reported as *inconclusive* rather than a false "dead". `PROBE_PROXY` accepts a comma-separated list and rotates through it, so one rate-limited egress does not paint the whole catalogue grey.
+
+---
+
 ## 💻 Running on a Laptop or Your Own VPS
 
 **Nothing extra is required.** The plugin has no dependency on this project's lab
