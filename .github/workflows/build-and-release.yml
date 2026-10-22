@@ -37,7 +37,7 @@ jobs:
             arch: arm64
             ext: so
             cc: aarch64-linux-gnu-gcc
-            packages: gcc-aarch64-linux-gnu zip
+            packages: gcc-aarch64-linux-gnu libc6-dev-arm64-cross zip
           - target: windows_amd64
             os: windows
             arch: amd64
