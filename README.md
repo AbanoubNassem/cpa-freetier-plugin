@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.7-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.8-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -29,20 +29,18 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 ### 1. OpenCode Zen Frontier Models (Zero-Key)
 | Model Identifier | Parameter Size / Specialization | Context Window | Max Output |
 | :--- | :--- | :--- | :--- |
-| `minimax-m3.1-flash-free` | Frontier multimodal reasoning with 1M context & 512k output | **1,000,000** | 512,000 |
+| `flint-40b-free` | 40B MoE coding agent specialist (~2.5B active) with reasoning | **262,144** | 65,536 |
 | `nemotron-3-ultra-free` | 1M context open-weight reasoning flagship (OpenCode) | **1,000,000** | 128,000 |
-| `exo-free` | Free-tier preview reasoning model with multimodal vision | **1,048,576** | 131,072 |
 | `glm-5.3-flash-free` | Flagship multimodal agentic reasoning model | **200,000** | 32,768 |
 | `big-pickle` | Frontier deliberate deep-thought reasoning model | **200,000** | 32,000 |
 | `deepseek-v4.1-flash-free` | DeepSeek V4.1 Flash reasoning & code specialist | **1,000,000** | 384,000 |
 | `mimo-v2.6-flash-free` | Xiaomi MiMo 2.6 Flash reasoning & instruction model | **262,144** | 65,536 |
 | `beam-free` | Low-latency versatile general chat model | **200,000** | 32,768 |
-| `longcat-2.5-preview-free` | 1M context long-document reasoning specialist | **1,000,000** | 65,536 |
 | `nemotron-3.5-super-vl-free` | Multimodal vision-language reasoning model | **1,000,000** | 65,536 |
 | `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
 | `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
 
-> **Note on retired ids:** `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
+> **Note on retired ids:** `minimax-m3.1-flash-free`, `exo-free`, `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`). `longcat-2.5-preview-free` is currently unavailable upstream. `scripts/check-models.sh` guards against re-shipping ids that vanished.
 
 > **Note on `jev-1.13-free`:** While present in OpenCode's backend catalog, `jev-1.13-free` rejects standard chat completions upstream (`ModelProtocolUnsupported`) and is omitted from the chat provider catalog.
 
@@ -51,7 +49,6 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 | :--- | :--- | :--- | :--- |
 | `kilo-auto/free` | Smart router across active free pools | **256,000** | 32,768 |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | 550B flagship frontier reasoning model | **1,000,000** | 65,536 |
-| `minimax/minimax-m3.1-flash:free` | Multimodal frontier reasoning (text/image/video) | **1,000,000** | 524,288 |
 | `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
 | `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
@@ -65,7 +62,7 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 | `xingchen-agi/xing4.0-29b-a4b:free` | 29B conversational reasoning model | **262,144** | 235,929 |
 | `nvidia/nemotron-3.5-content-safety:free` | Safety classification & guardrails | **128,000** | 8,192 |
 
-> **Note on retired Kilo ids:** `thinkingmachines/inkling-small:free` and `nvidia/nemotron-3-super-120b-a12b:free` were removed upstream (`404 The requested model is currently unavailable`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
+> **Note on retired Kilo ids:** `minimax/minimax-m3.1-flash:free`, `thinkingmachines/inkling-small:free` and `nvidia/nemotron-3-super-120b-a12b:free` were removed upstream (`404 The requested model is currently unavailable`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
 
 ---
 
@@ -87,7 +84,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -95,7 +92,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -103,7 +100,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -111,13 +108,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.7/cpa-freetier-plugin_1.2.7_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.7_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.2.8_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
@@ -221,7 +218,7 @@ reports it verbatim and the model is left alone.
 
 ---
 
-## 🔒 Reliability Notes (v1.2.7)
+## 🔒 Reliability Notes (v1.2.8)
 
 * **Bounded logging.** Request bodies are replaced by a length + short SHA-256 prefix. The previous build wrote the full conversation to a fixed path with no cap — on a 512 MiB tmpfs that reached 393 MiB in ~90 minutes.
 * **Connection reuse.** Transports are process-wide and cached per egress, with `ResponseHeaderTimeout` so a hung upstream cannot pin a goroutine forever.
@@ -230,6 +227,7 @@ reports it verbatim and the model is left alone.
 * **Bounded SSE lines.** A single `data:` line may reach 16 MiB; the old 2 MiB scanner limit aborted legitimately large tool-call streams.
 * **Exactly-once stream close**, session-cache sweeping, and size-safe C buffer copies.
 * **`reasoning_effort` is forwarded.** The upstream gateway accepts it on every advertised model and it measurably changes how much the model reasons, so the sanitizer no longer removes it. Parameters the upstream genuinely rejects (`enable_thinking`, `thinking_budget`, …) are still stripped, and `CPA_KEEP_FIELDS` re-enables any of them for a deployment whose upstream tolerates them.
+* **Live liveness probe.** `make probe-models` calls every advertised model and verifies actual response (200 OK) instead of trusting catalogue listings alone.
 
 ---
 

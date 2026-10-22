@@ -100,7 +100,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.2.7"
+var pluginVersion = "1.2.8"
 
 const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 const sessionPrefixMask = (uint64(1) << 48) - 1
@@ -447,16 +447,14 @@ func getHTTPClient(forOpenCode bool) *http.Client {
 }
 
 var openCodeModels = map[string]bool{
-	"minimax-m3.1-flash-free":     true,
+	"flint-40b-free":              true,
 	"nemotron-3-ultra-free":       true,
-	"exo-free":                    true,
 	"glm-5.3-flash-free":          true,
 	"big-pickle":                  true,
 	"deepseek-v4.1-flash-free":    true,
 	"cat-jam-free":                true,
 	"mimo-v2.6-flash-free":        true,
 	"beam-free":                   true,
-	"longcat-2.5-preview-free":    true,
 	"nemotron-3.5-super-vl-free":  true,
 	"nemotron-3.5-lightning-free": true,
 }
@@ -464,7 +462,6 @@ var openCodeModels = map[string]bool{
 var kiloModels = map[string]bool{
 	"kilo-auto/free":                                     true,
 	"nvidia/nemotron-3-ultra-550b-a55b:free":             true,
-	"minimax/minimax-m3.1-flash:free":                    true,
 	"cohere/north-mini-code:free":                        true,
 	"openrouter/free":                                    true,
 	"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": true,
@@ -781,15 +778,13 @@ func listModels() []map[string]any {
 
 	items := []modelDef{
 		// OpenCode Free Tier (9router v2 protocol)
-		{"minimax-m3.1-flash-free", "MiniMax M3.1 Flash Free (OpenCode)", 1000000, 512000, true},
+		{"flint-40b-free", "Flint 40B Free (OpenCode)", 262144, 65536, true},
 		{"nemotron-3-ultra-free", "Nemotron 3 Ultra Free (OpenCode)", 1000000, 128000, true},
-		{"exo-free", "Exo Free (OpenCode)", 1048576, 131072, true},
 		{"glm-5.3-flash-free", "GLM 5.3 Flash Free (OpenCode)", 200000, 32768, true},
 		{"big-pickle", "Big Pickle Free (OpenCode)", 200000, 32000, true},
 		{"deepseek-v4.1-flash-free", "DeepSeek V4.1 Flash Free (OpenCode)", 1000000, 384000, true},
 		{"mimo-v2.6-flash-free", "MiMo v2.6 Flash Free (OpenCode)", 262144, 65536, true},
 		{"beam-free", "Beam Free (OpenCode)", 200000, 32768, true},
-		{"longcat-2.5-preview-free", "LongCat 2.5 Preview Free (OpenCode)", 1000000, 65536, true},
 		{"nemotron-3.5-super-vl-free", "Nemotron 3.5 Super VL Free (OpenCode)", 1000000, 65536, false},
 		{"cat-jam-free", "Cat Jam Free (OpenCode)", 1048576, 131072, true},
 		{"nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free (OpenCode)", 1000000, 65536, false},
@@ -797,7 +792,6 @@ func listModels() []map[string]any {
 		// Kilo Free Tier (Active Curated Models)
 		{"kilo-auto/free", "Kilo Auto Free", 256000, 32768, false},
 		{"nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra 550B Free (Kilo)", 1000000, 65536, true},
-		{"minimax/minimax-m3.1-flash:free", "MiniMax M3.1 Flash Free (Kilo)", 1000000, 524288, true},
 		{"cohere/north-mini-code:free", "North Mini Code Free (Kilo)", 256000, 64000, false},
 		{"openrouter/free", "OpenRouter Free Auto (Kilo)", 200000, 65536, false},
 		{"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "Nemotron 3 Nano Omni Free (Kilo)", 256000, 65536, true},
