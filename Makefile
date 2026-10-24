@@ -7,6 +7,8 @@ LDFLAGS := -s -w -X main.pluginVersion=$(VERSION)
 
 all: build-linux-amd64 build-linux-arm64 build-windows-amd64
 
+build: build-linux-amd64
+
 build-linux-amd64:
 	mkdir -p dist
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=gcc go build -buildmode=c-shared -trimpath -ldflags="$(LDFLAGS)" -o dist/cpa-freetier-plugin_linux_amd64.so main.go

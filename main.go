@@ -100,7 +100,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.2.8"
+var pluginVersion = "1.2.9"
 
 const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 const sessionPrefixMask = (uint64(1) << 48) - 1
@@ -734,6 +734,285 @@ func sanitizePayloadMap(bodyMap map[string]any) bool {
 	return changed
 }
 
+// normalizeMessages ensures standard role conventions ("user", "assistant", "system")
+// and repairs malformed/missing roles (e.g. empty role "" -> "user", "developer" -> "system",
+// nil content -> "") sent by clients like Synaplan, Cline, Cursor, or completions callers.
+// Resolves: "Request normalizer: failed to convert messages: unexpected message at index 0: expected 'user', 'assistant' or 'system', got """
+func normalizeMessages(bodyMap map[string]any) bool {
+	changed := false
+
+	// If prompt exists but no messages, convert to standard chat messages
+	if _, hasMessages := bodyMap["messages"]; !hasMessages {
+		if prompt, ok := bodyMap["prompt"].(string); ok && strings.TrimSpace(prompt) != "" {
+			bodyMap["messages"] = []any{
+				map[string]any{
+					"role":    "user",
+					"content": prompt,
+				},
+			}
+			delete(bodyMap, "prompt")
+			changed = true
+		}
+	}
+
+	msgs, ok := bodyMap["messages"].([]any)
+	if !ok {
+		return changed
+	}
+
+	if len(msgs) == 0 {
+		bodyMap["messages"] = []any{
+			map[string]any{
+				"role":    "user",
+				"content": "Hello",
+			},
+		}
+		return true
+	}
+
+	for i, m := range msgs {
+		msgMap, isMap := m.(map[string]any)
+		if !isMap {
+			continue
+		}
+
+		roleRaw, hasRole := msgMap["role"]
+		roleStr := ""
+		if hasRole && roleRaw != nil {
+			if s, ok := roleRaw.(string); ok {
+				roleStr = strings.TrimSpace(s)
+			}
+		}
+
+		if roleStr == "" {
+			// At index 0 or any turn with empty/missing role: default to safe user turn
+			msgMap["role"] = "user"
+			changed = true
+		} else if strings.EqualFold(roleStr, "developer") {
+			// Upstream gateways reject developer role; map to system
+			msgMap["role"] = "system"
+			changed = true
+		} else if strings.EqualFold(roleStr, "system") || strings.EqualFold(roleStr, "user") || strings.EqualFold(roleStr, "assistant") || strings.EqualFold(roleStr, "tool") || strings.EqualFold(roleStr, "function") {
+			lower := strings.ToLower(roleStr)
+			if lower != roleStr {
+				msgMap["role"] = lower
+				changed = true
+			}
+		} else {
+			// Any unrecognized role: default to user so validation doesn't reject it
+			msgMap["role"] = "user"
+			changed = true
+		}
+
+		// Ensure content is never nil/null
+		if content, hasContent := msgMap["content"]; !hasContent || content == nil {
+			msgMap["content"] = ""
+			changed = true
+		}
+
+		msgs[i] = msgMap
+	}
+
+	return changed
+}
+
+// sanitizeAndNormalizePayload combines gateway parameter stripping and message
+// normalization so payloads sent directly to Kilo or OpenCode are always clean.
+func sanitizeAndNormalizePayload(payload []byte, model string) []byte {
+	if len(payload) == 0 {
+		return payload
+	}
+	var bodyMap map[string]any
+	if err := json.Unmarshal(payload, &bodyMap); err != nil {
+		return payload
+	}
+
+	changed := sanitizePayloadMap(bodyMap)
+	if normalizeMessages(bodyMap) {
+		changed = true
+	}
+
+	if changed {
+		newBody, err := json.Marshal(bodyMap)
+		if err == nil {
+			return newBody
+		}
+	}
+	return payload
+}
+
+// ── Model Exclusions (Issue #5) ─────────────────────────────────────────────
+//
+// Supports operator-configured model exclusions so models can be hidden from
+// the catalog (/v1/models) and rejected locally before contacting upstream.
+// Reads from:
+//   1. Environment variable CPA_EXCLUDED_MODELS (comma-separated or JSON array)
+//   2. Descriptor JSON file(s) in auth-dir (e.g. cpa-freetier-plugin.json with "excluded_models": [...])
+var (
+	excludedModelsMu    sync.RWMutex
+	cachedExcludedRules []string
+	lastExcludedCheck   time.Time
+)
+
+func getAuthDirs() []string {
+	var dirs []string
+	if d := strings.TrimSpace(os.Getenv("CLI_PROXY_AUTH_DIR")); d != "" {
+		dirs = append(dirs, d)
+	}
+	if d := strings.TrimSpace(os.Getenv("CPA_AUTH_DIR")); d != "" {
+		dirs = append(dirs, d)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, ".cli-proxy-api"))
+	}
+	dirs = append(dirs, "/etc/cli-proxy-api", ".")
+	return dirs
+}
+
+func parseExcludedModelsValue(raw any) []string {
+	var result []string
+	switch v := raw.(type) {
+	case string:
+		v = strings.TrimSpace(v)
+		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
+			var slice []string
+			if err := json.Unmarshal([]byte(v), &slice); err == nil {
+				for _, s := range slice {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						result = append(result, s)
+					}
+				}
+				return result
+			}
+		}
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				result = append(result, part)
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					result = append(result, s)
+				}
+			}
+		}
+	case []string:
+		for _, s := range v {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				result = append(result, s)
+			}
+		}
+	}
+	return result
+}
+
+func getExcludedModelRules() []string {
+	excludedModelsMu.RLock()
+	if time.Since(lastExcludedCheck) < 2*time.Second && cachedExcludedRules != nil {
+		rules := cachedExcludedRules
+		excludedModelsMu.RUnlock()
+		return rules
+	}
+	excludedModelsMu.RUnlock()
+
+	excludedModelsMu.Lock()
+	defer excludedModelsMu.Unlock()
+
+	if time.Since(lastExcludedCheck) < 2*time.Second && cachedExcludedRules != nil {
+		return cachedExcludedRules
+	}
+
+	rulesMap := make(map[string]bool)
+
+	// 1. Environment variable CPA_EXCLUDED_MODELS
+	if envVal := strings.TrimSpace(os.Getenv("CPA_EXCLUDED_MODELS")); envVal != "" {
+		for _, item := range parseExcludedModelsValue(envVal) {
+			rulesMap[strings.ToLower(item)] = true
+		}
+	}
+
+	// 2. Auth descriptor files in auth directories
+	for _, dir := range getAuthDirs() {
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, fi := range files {
+			if fi.IsDir() || !strings.HasSuffix(strings.ToLower(fi.Name()), ".json") {
+				continue
+			}
+			filePath := filepath.Join(dir, fi.Name())
+			data, errRead := os.ReadFile(filePath)
+			if errRead != nil || len(data) == 0 {
+				continue
+			}
+			var m map[string]any
+			if errJSON := json.Unmarshal(data, &m); errJSON != nil {
+				continue
+			}
+			prov, _ := m["provider"].(string)
+			typ, _ := m["type"].(string)
+			isCPA := prov == pluginID || typ == pluginID || fi.Name() == "cpa-freetier-plugin.json"
+			if !isCPA && prov != "" && typ != "" {
+				continue
+			}
+			if exRaw, ok := m["excluded_models"]; ok {
+				for _, item := range parseExcludedModelsValue(exRaw) {
+					rulesMap[strings.ToLower(item)] = true
+				}
+			}
+			if exRaw, ok := m["excluded-models"]; ok {
+				for _, item := range parseExcludedModelsValue(exRaw) {
+					rulesMap[strings.ToLower(item)] = true
+				}
+			}
+		}
+	}
+
+	rules := make([]string, 0, len(rulesMap))
+	for r := range rulesMap {
+		rules = append(rules, r)
+	}
+	cachedExcludedRules = rules
+	lastExcludedCheck = time.Now()
+	return rules
+}
+
+func isModelExcluded(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	cleanModel := strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/")
+	rules := getExcludedModelRules()
+	for _, rule := range rules {
+		rule = strings.ToLower(strings.TrimSpace(rule))
+		if rule == "" {
+			continue
+		}
+		if rule == model || rule == cleanModel {
+			return true
+		}
+		cleanRule := strings.TrimPrefix(strings.TrimPrefix(rule, "opencode/"), "kilo/")
+		if cleanRule == cleanModel || cleanRule == model {
+			return true
+		}
+		if matched, _ := filepath.Match(rule, model); matched {
+			return true
+		}
+		if matched, _ := filepath.Match(cleanRule, cleanModel); matched {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeRequest(payload []byte) ([]byte, error) {
 	var req requestTransformRequest
 	if len(payload) > 0 {
@@ -750,16 +1029,13 @@ func normalizeRequest(payload []byte) ([]byte, error) {
 		return ok(payloadResponse{Body: req.Body})
 	}
 
-	modelLower := strings.ToLower(strings.TrimSpace(req.Model))
-	changed := false
-
-	// Clean parameters that conflict with Kilo AI or OpenCode
-	if strings.Contains(modelLower, ":free") || strings.HasPrefix(modelLower, "kilo-auto") || openCodeModels[modelLower] {
-		changed = sanitizePayloadMap(bodyMap)
+	changed := sanitizePayloadMap(bodyMap)
+	if normalizeMessages(bodyMap) {
+		changed = true
 	}
 
 	if changed {
-		logDebug("normalizeRequest: stripped unsupported fields for model=%s", req.Model)
+		logDebug("normalizeRequest: sanitized payload fields and messages for model=%s", req.Model)
 		newBody, err := json.Marshal(bodyMap)
 		if err == nil {
 			return ok(payloadResponse{Body: json.RawMessage(newBody)})
@@ -808,6 +1084,10 @@ func listModels() []map[string]any {
 
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
+		// Respect operator model exclusions (Issue #5)
+		if isModelExcluded(item.id) {
+			continue
+		}
 		// Never advertise a model the upstream has dropped.
 		if !modelHealthy(item.id) {
 			continue
@@ -831,6 +1111,9 @@ func execute(raw []byte) ([]byte, error) {
 	req, err := decodeRequest(raw)
 	if err != nil {
 		return errorEnvelope("invalid_request", err.Error(), 400), nil
+	}
+	if isModelExcluded(req.Model) {
+		return errorEnvelope("model_not_found", fmt.Sprintf("model %q is excluded by plugin configuration", req.Model), 404), nil
 	}
 	logMsg("execute start: model=%s", req.Model)
 	resp, err := callUpstream(req.Model, req.Payload, false)
@@ -878,6 +1161,9 @@ func executeStream(raw []byte) ([]byte, error) {
 	}
 	if strings.TrimSpace(req.StreamID) == "" {
 		return errorEnvelope("executor_error", "stream_id is required", 0), nil
+	}
+	if isModelExcluded(req.Model) {
+		return errorEnvelope("model_not_found", fmt.Sprintf("model %q is excluded by plugin configuration", req.Model), 404), nil
 	}
 
 	logMsg("executeStream start: model=%s, stream_id=%s", req.Model, req.StreamID)
@@ -1061,6 +1347,7 @@ func modelHealthy(id string) bool {
 
 func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse, error) {
 	cleanModel := strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/")
+	payload = sanitizeAndNormalizePayload(payload, cleanModel)
 	var (
 		resp *upstreamResponse
 		err  error

@@ -122,9 +122,14 @@ In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
 {
   "disabled": false,
   "provider": "cpa-freetier-plugin",
-  "type": "cpa-freetier-plugin"
+  "type": "cpa-freetier-plugin",
+  "excluded_models": [
+    "muse*"
+  ]
 }
 ```
+
+> **Note on Model Exclusion:** You can exclude unstable or undesired models from `/v1/models` and prevent routing them upstream by specifying `"excluded_models"` in `cpa-freetier-plugin.json` (supports wildcards/globs like `"muse*"` or full IDs) or via environment variable `CPA_EXCLUDED_MODELS="muse*,kilo-auto/free"`.
 Enable the plugin in `config.yaml`:
 ```yaml
 plugins:

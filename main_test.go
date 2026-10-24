@@ -551,3 +551,83 @@ func TestDebugLoggingIsOptIn(t *testing.T) {
 		t.Error("CPA_FREETIER_DEBUG=yes should enable verbose logging")
 	}
 }
+
+func TestNormalizeRequestRepairsEmptyRoleAndInvalidMessages(t *testing.T) {
+	// Issue #8: "Request normalizer: failed to convert messages: unexpected message at index 0: expected 'user', 'assistant' or 'system', got """
+	body := `{"model":"free-mimo","messages":[{"role":"","content":"hello world"},{"role":"developer","content":"you are an assistant"},{"content":"test empty role omitted"}]}`
+	raw, _ := json.Marshal(requestTransformRequest{
+		Model: "free-mimo",
+		Body:  json.RawMessage(body),
+	})
+
+	normRaw, err := normalizeRequest(raw)
+	if err != nil {
+		t.Fatalf("normalizeRequest failed: %v", err)
+	}
+
+	var env envelope
+	if err := json.Unmarshal(normRaw, &env); err != nil {
+		t.Fatalf("envelope is not valid JSON: %v", err)
+	}
+
+	var resp payloadResponse
+	if err := json.Unmarshal(env.Result, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	var bodyMap map[string]any
+	if err := json.Unmarshal(resp.Body, &bodyMap); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+
+	msgs, ok := bodyMap["messages"].([]any)
+	if !ok || len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %v", msgs)
+	}
+
+	// Message 0 had empty role -> should be "user"
+	msg0 := msgs[0].(map[string]any)
+	if msg0["role"] != "user" {
+		t.Errorf("msg0 role should be user, got %v", msg0["role"])
+	}
+
+	// Message 1 had "developer" role -> should be mapped to "system"
+	msg1 := msgs[1].(map[string]any)
+	if msg1["role"] != "system" {
+		t.Errorf("msg1 role should be system, got %v", msg1["role"])
+	}
+
+	// Message 2 had missing role -> should be "user"
+	msg2 := msgs[2].(map[string]any)
+	if msg2["role"] != "user" {
+		t.Errorf("msg2 role should be user, got %v", msg2["role"])
+	}
+}
+
+func TestModelExclusionRules(t *testing.T) {
+	// Issue #5: Support excluding models via config/env
+	t.Setenv("CPA_EXCLUDED_MODELS", "muse*,kilo-auto/free,opencode/big-pickle")
+	cachedExcludedRules = nil // clear cache
+
+	if !isModelExcluded("muse-spark-1.3-contributor-free") {
+		t.Error("expected muse-spark-1.3-contributor-free to be excluded by glob 'muse*'")
+	}
+	if !isModelExcluded("kilo-auto/free") {
+		t.Error("expected kilo-auto/free to be excluded")
+	}
+	if !isModelExcluded("big-pickle") {
+		t.Error("expected big-pickle to be excluded by opencode/big-pickle rule")
+	}
+	if isModelExcluded("mimo-v2.6-flash-free") {
+		t.Error("mimo-v2.6-flash-free should NOT be excluded")
+	}
+
+	// Test listModels filtering
+	models := listModels()
+	for _, m := range models {
+		id := m["ID"].(string)
+		if id == "kilo-auto/free" || strings.HasPrefix(id, "muse") || id == "big-pickle" {
+			t.Errorf("model %s should have been filtered out from listModels", id)
+		}
+	}
+}
