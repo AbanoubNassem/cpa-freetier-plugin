@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.2.8-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.3.0-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -84,7 +84,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -92,7 +92,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -100,7 +100,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -108,13 +108,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.2.8/cpa-freetier-plugin_1.2.8_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.2.8_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.3.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
 
 #### Register Provider Descriptor & Enable
 In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
@@ -223,8 +223,11 @@ reports it verbatim and the model is left alone.
 
 ---
 
-## 🔒 Reliability Notes (v1.2.8)
+## 🔒 Reliability Notes (v1.3.0)
 
+* **OpenCode v2 Gate Bypass & Sidecar Routing:** Resolves the upstream `429 FreeUsageLimitError` caused by OpenCode's October 2026 TLS-fingerprinting and harness validation. The plugin now automatically checks for a local Bun sidecar running on `127.0.0.1:8789` (or custom via `OPENCODE_BASE_URL`) and routes OpenCode requests to it locally, preserving residential proxy egress.
+* **Empty Role Sanitization:** Sanitizes client messages with empty or invalid roles (`developer` -> `system`, missing/empty -> `user`) to prevent upstream schema rejection.
+* **Operator Model Exclusion:** Supports `CPA_EXCLUDED_MODELS` (glob/comma-separated) to selectively disable specific free models without rebuilding the binary.
 * **Bounded logging.** Request bodies are replaced by a length + short SHA-256 prefix. The previous build wrote the full conversation to a fixed path with no cap — on a 512 MiB tmpfs that reached 393 MiB in ~90 minutes.
 * **Connection reuse.** Transports are process-wide and cached per egress, with `ResponseHeaderTimeout` so a hung upstream cannot pin a goroutine forever.
 * **Correct fallback.** Datacenter proxies are no longer used for OpenCode; the reachability probe is cached for 30s instead of dialing on every request.

@@ -631,3 +631,18 @@ func TestModelExclusionRules(t *testing.T) {
 		}
 	}
 }
+
+func TestGetOpenCodeBaseURL(t *testing.T) {
+	t.Setenv("OPENCODE_BASE_URL", "http://custom-opencode:9999/")
+	if got := getOpenCodeBaseURL(); got != "http://custom-opencode:9999" {
+		t.Errorf("expected trimmed custom base URL, got %q", got)
+	}
+
+	t.Setenv("OPENCODE_BASE_URL", "")
+	// If 127.0.0.1:8789 is running locally, it should return http://127.0.0.1:8789
+	// Otherwise empty string
+	got := getOpenCodeBaseURL()
+	if got != "" && got != "http://127.0.0.1:8789" {
+		t.Errorf("unexpected base URL: %q", got)
+	}
+}
