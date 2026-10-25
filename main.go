@@ -1361,8 +1361,20 @@ func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse,
 	return resp, err
 }
 
+func getOpenCodeBaseURL() string {
+	if u := strings.TrimRight(os.Getenv("OPENCODE_BASE_URL"), "/"); u != "" {
+		return u
+	}
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:8789", 50*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return "http://127.0.0.1:8789"
+	}
+	return ""
+}
+
 func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse, error) {
-	baseURL := strings.TrimRight(os.Getenv("OPENCODE_BASE_URL"), "/")
+	baseURL := getOpenCodeBaseURL()
 	targetURL := opencodeChatURL
 	if baseURL != "" {
 		targetURL = baseURL + "/inference/openai/v1/chat/completions"
@@ -1393,13 +1405,19 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 		"Accept":                []string{"text/event-stream"},
 	}
 
-	proxy := getOpenCodeProxy()
-	proxyKey := "env"
-	if proxy != nil {
-		proxyKey = proxy.String()
+	isLocal := strings.HasPrefix(targetURL, "http://127.0.0.1") || strings.HasPrefix(targetURL, "http://localhost")
+	var client *http.Client
+	proxyKey := "direct"
+	if isLocal {
+		client = getHTTPClient(false)
+	} else {
+		proxy := getOpenCodeProxy()
+		if proxy != nil {
+			proxyKey = proxy.String()
+		}
+		client = getHTTPClient(true)
 	}
 	logDebug("callOpenCode: egress=%s", proxyKey)
-	client := getHTTPClient(true)
 
 	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(transformedPayload))
 	if err != nil {
@@ -1410,10 +1428,10 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	started := time.Now()
 	res, err := client.Do(req)
 	if err != nil {
-		// A dead egress is the most common failure: drop both caches so the next
-		// call re-probes the proxy and rebuilds its connection pool.
-		invalidateTransport(proxyKey)
-		invalidateOpenCodeProxy()
+		if !isLocal {
+			invalidateTransport(proxyKey)
+			invalidateOpenCodeProxy()
+		}
 		logMsg("callOpenCode: transport error model=%s egress=%s after %s: %v", model, proxyKey, time.Since(started).Round(time.Millisecond), err)
 		return nil, err
 	}
