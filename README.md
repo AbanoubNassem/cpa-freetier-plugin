@@ -142,6 +142,38 @@ plugins:
 
 ---
 
+## 💡 How to Make OpenCode Free Models Work (Bypass 403 & 429 Errors)
+
+OpenCode's free tier is zero-key, but its upstream Cloudflare WAF applies strict network and client heuristics. Follow these guidelines depending on your setup:
+
+### 🏠 1. Running on a Laptop, Home PC, or Residential Broadband
+* **Direct Out-of-the-Box:** It connects directly through your host network without needing any proxy. Cloudflare accepts residential broadband IPs seamlessly.
+* **Pro-tip:** If your machine doesn't have a local proxy pool running, set `OPENCODE_PROXY_POOL=""` in your environment to skip loopback probe checks and connect immediately.
+
+### ☁️ 2. Running on a Cloud VPS / Datacenter (AWS, Hetzner, DO, etc.)
+* **The Error:** `403 Forbidden` (`FreeTierError: OpenCode's free tier can only be used from within OpenCode`).
+* **Root Cause:** Cloudflare WAF blocks datacenter Autonomous System Numbers (ASNs).
+* **The Fix:** Route OpenCode outbound requests through a residential, mobile (4G/LTE), or home proxy using `OPENCODE_PROXY`:
+  ```bash
+  export OPENCODE_PROXY="http://user:password@residential-proxy.net:8080"
+  # or SOCKS5h:
+  export OPENCODE_PROXY="socks5h://127.0.0.1:1080"
+  ```
+  *(Note: Kilo AI models work direct from anywhere and do not require residential proxies).*
+
+### 🛡️ 3. Upstream TLS Fingerprinting & Rate Limits (429 Bypass)
+* **New in v1.3.0:** The plugin automatically detects if a local Bun sidecar TLS bridge is running on `127.0.0.1:8789`. If present, it routes OpenCode traffic locally through the sidecar, completely bypassing HTTP client TLS-fingerprint blocks.
+* **Custom Sidecar:** You can also point to any custom sidecar gateway via:
+  ```bash
+  export OPENCODE_BASE_URL="http://127.0.0.1:8789"
+  ```
+
+### 🤖 4. Coding Agent Payload Compatibility (Cursor, Cline, Hermes, Synaplan)
+* **New in v1.3.0:** Full automatic message role normalization (`role: ""` -> `"user"`, `developer` -> `"system"`, nil content repair) to eliminate `failed to convert messages` errors.
+* Unsupported agent parameters (`thinking_budget`, `enable_thinking`, `search`) are automatically stripped, while official `reasoning_effort` is preserved for frontier models like `flint-40b-free`.
+
+---
+
 ## 🌐 Optional Outbound Proxy Support
 
 The plugin **works 100% direct out-of-the-box without requiring any proxy**.
