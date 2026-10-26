@@ -7,62 +7,69 @@
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
-A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+). It gives you out-of-the-box access to curated, **100% free frontier AI models** without requiring user accounts, API keys, credits, or subscriptions.
+A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+). It provides out-of-the-box access to **24 curated, 100% free AI models** across **OpenCode Zen** (10 models) and **Kilo AI** (14 models) without requiring user accounts, API keys, credits, or subscriptions.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Features (v1.3.0)
 
-* **Zero-Key & Zero-Config:** Ready to use immediately. No account generation, credit cards, or API keys required.
-* **OpenCode v2 Wire Protocol:** Fully compliant with OpenCode's v2 CLI contract (`opencode/latest/2.0.32/cli`), descending session affinity, and automatic tool declaration spoofing to prevent `403 FreeTierError`.
-* **Universal Agent Compatibility:** Built-in `request_normalizer` engine that automatically strips unsupported parameters (`thinking`, `enable_thinking`, `thinking_budget`, `thinking_config`, `search`, `web_search`, `return_citations`) sent by coding agents like **Hermes Agent**, **Cursor**, **Claude Code**, and **Aider**. `reasoning_effort` is deliberately **kept** — the upstream gateway accepts it and it controls how much the model reasons. Custom fields via `CPA_STRIP_FIELDS` (add) and `CPA_KEEP_FIELDS` (re-enable).
+* **Zero-Key & Auto-Registered:** Ready to use immediately. Automatically writes its provider auth descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) on `cliproxy_plugin_init`, `plugin.register`, and `plugin.reconfigure` unless disabled via `CPA_NO_AUTH_DESCRIPTOR=1`.
+* **OpenCode v2 Wire Protocol & Automatic Sidecar Routing:**
+  * Implements the OpenCode v2 CLI contract (`opencode/latest/2.0.32/cli`), descending-timestamp session affinity (`ses_<12-hex><14-base62>`, 30-minute TTL with automatic expiry sweeping), and automatic `read`/`shell` fingerprint tool injection (renaming caller `read`/`shell` tools to `read_client`/`shell_client` on send and restoring them transparently in responses).
+  * **Local Sidecar Auto-Detection (`127.0.0.1:8789`):** Automatically probes `127.0.0.1:8789` (50ms TCP timeout) or uses `OPENCODE_BASE_URL` to route OpenCode requests through a local Bun/TLS sidecar (such as [`zen-proxy`](https://github.com/12errh/zen-proxy)) when available, bypassing upstream TLS/JA3 fingerprinting and 12-tool manifest checks (`429 FreeUsageLimitError` / `403 FreeTierError`) without double-proxying.
+* **Universal Agent & Client Compatibility (`request.normalize` + Executor Sanitizer):**
+  * **Parameter Stripping:** Strips unsupported parameters (`thinking`, `enable_thinking`, `thinking_budget`, `thinking_config`, `search`, `web_search`, `return_citations`) sent by coding agents (**Hermes Agent**, **Cursor**, **Cline**, **Claude Code**, **Aider**, **Synaplan**). `reasoning_effort` is deliberately **preserved** because the upstream gateway accepts it and adjusts reasoning depth. Custom overrides via `CPA_STRIP_FIELDS` and `CPA_KEEP_FIELDS`.
+  * **Message Role & Schema Normalization:** Converts legacy `prompt` strings into standard `messages`, populates empty `messages: []` arrays, normalizes empty/missing/unrecognized roles (`role: ""`) to `"user"`, maps `"developer"` to `"system"`, lowercases standard roles (`system`, `user`, `assistant`, `tool`, `function`), and repairs `nil` message content to `""`.
+* **Operator Model Exclusions:** Hide specific models from `/v1/models` and block execution (`404 model_not_found`) dynamically via `CPA_EXCLUDED_MODELS` or `"excluded_models"` / `"excluded-models"` in the auth descriptor JSON (supports case-insensitive globs like `muse*` and prefixes `opencode/` or `kilo/`, cached with a 2-second TTL).
+* **Automatic Model Health Quarantine:** Models that return upstream `400` / `404` / `410` with missing or deprecated markers (`not found`, `does not exist`, `unknown model`, `unknown provider`, `model is unavailable`, `model_not_found`, `modeldeprecated`, `deprecated`) are automatically hidden from `listModels()` for 30 minutes (`modelUnhealthyTTL`) and restored on recovery.
 * **Dual Execution Modes:**
-  * **Native Zero-Buffering Streaming:** Emits raw SSE chunks via host callbacks (`host.stream.emit`) with clean termination on `[DONE]`.
-  * **Intelligent Non-Streaming Assembler:** Seamlessly translates streaming upstream responses into full OpenAI-standard `chat.completion` JSON payloads.
-* **Full Multi-Platform Coverage:** First-class pre-compiled binaries for **Linux** (`amd64`, `arm64`), **macOS / Apple Silicon** (`darwin_arm64`, `darwin_amd64`), and **Windows** (`windows_amd64 .dll`).
-* **Resilient Network & Proxy Support:** Operates 100% direct out-of-the-box. Includes support for custom residential/egress proxies via `OPENCODE_PROXY` alongside non-blocking local proxy pool probing.
+  * **Native Zero-Buffering Streaming (`executor.execute_stream`):** Emits SSE chunks directly via `host.stream.emit` (up to 16 MiB per `data:` line) with guaranteed single-close semantics (`host.stream.close`).
+  * **Intelligent Non-Streaming Assembler (`executor.execute`):** Assembles upstream SSE streams into standard OpenAI `chat.completion` JSON objects, preserving `content`, `reasoning_content`, indexed `tool_calls`, `finish_reason`, and `usage`.
+* **Full Multi-Platform Coverage:** Pre-compiled C-shared libraries for **Linux** (`amd64`, `arm64`), **macOS** (`darwin_arm64`, `darwin_amd64`), and **Windows** (`windows_amd64`).
 
 ---
 
-## 📋 Supported Free Models
+## 📋 Supported Free Models (24 Total)
 
-### 1. OpenCode Zen Frontier Models (Zero-Key)
-| Model Identifier | Parameter Size / Specialization | Context Window | Max Output |
-| :--- | :--- | :--- | :--- |
-| `flint-40b-free` | 40B MoE coding agent specialist (~2.5B active) with reasoning | **262,144** | 65,536 |
-| `nemotron-3-ultra-free` | 1M context open-weight reasoning flagship (OpenCode) | **1,000,000** | 128,000 |
-| `glm-5.3-flash-free` | Flagship multimodal agentic reasoning model | **200,000** | 32,768 |
-| `big-pickle` | Frontier deliberate deep-thought reasoning model | **200,000** | 32,000 |
-| `deepseek-v4.1-flash-free` | DeepSeek V4.1 Flash reasoning & code specialist | **1,000,000** | 384,000 |
-| `mimo-v2.6-flash-free` | Xiaomi MiMo 2.6 Flash reasoning & instruction model | **262,144** | 65,536 |
-| `beam-free` | Low-latency versatile general chat model | **200,000** | 32,768 |
-| `nemotron-3.5-super-vl-free` | Multimodal vision-language reasoning model | **1,000,000** | 65,536 |
-| `cat-jam-free` | Agentic text generation & coding specialist | **1,048,576** | 131,072 |
-| `nemotron-3.5-lightning-free`| Low-latency, high-throughput code helper | **1,000,000** | 65,536 |
+Both bare model IDs (e.g. `flint-40b-free`, `kilo-auto/free`) and provider-prefixed IDs (`opencode/<id>`, `kilo/<id>`) are accepted when calling the plugin.
 
-> **Note on retired ids:** `minimax-m3.1-flash-free`, `exo-free`, `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`). `longcat-2.5-preview-free` is currently unavailable upstream. `scripts/check-models.sh` guards against re-shipping ids that vanished.
+### 1. OpenCode Zen Frontier Models (10 Models)
 
-> **Note on `jev-1.13-free`:** While present in OpenCode's backend catalog, `jev-1.13-free` rejects standard chat completions upstream (`ModelProtocolUnsupported`) and is omitted from the chat provider catalog.
+| Model Identifier | Display Name in Code | Context Window | Max Output | Thinking |
+| :--- | :--- | :--- | :--- | :---: |
+| `flint-40b-free` | `Flint 40B Free (OpenCode)` | **262,144** | 65,536 | ✅ |
+| `nemotron-3-ultra-free` | `Nemotron 3 Ultra Free (OpenCode)` | **1,000,000** | 128,000 | ✅ |
+| `glm-5.3-flash-free` | `GLM 5.3 Flash Free (OpenCode)` | **200,000** | 32,768 | ✅ |
+| `big-pickle` | `Big Pickle Free (OpenCode)` | **200,000** | 32,000 | ✅ |
+| `deepseek-v4.1-flash-free` | `DeepSeek V4.1 Flash Free (OpenCode)` | **1,000,000** | 384,000 | ✅ |
+| `mimo-v2.6-flash-free` | `MiMo v2.6 Flash Free (OpenCode)` | **262,144** | 65,536 | ✅ |
+| `beam-free` | `Beam Free (OpenCode)` | **200,000** | 32,768 | ✅ |
+| `nemotron-3.5-super-vl-free` | `Nemotron 3.5 Super VL Free (OpenCode)` | **1,000,000** | 65,536 | — |
+| `cat-jam-free` | `Cat Jam Free (OpenCode)` | **1,048,576** | 131,072 | ✅ |
+| `nemotron-3.5-lightning-free` | `Nemotron 3.5 Lightning Free (OpenCode)` | **1,000,000** | 65,536 | — |
 
-### 2. Kilo AI Curated Models
-| Model Identifier | Specialization | Context Window | Max Output |
-| :--- | :--- | :--- | :--- |
-| `kilo-auto/free` | Smart router across active free pools | **256,000** | 32,768 |
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | 550B flagship frontier reasoning model | **1,000,000** | 65,536 |
-| `cohere/north-mini-code:free` | Fast syntax, code completion & linting | **256,000** | 64,000 |
-| `openrouter/free` | Community-curated fallback pool | **200,000** | 65,536 |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Compact multimodal vision & reasoning | **256,000** | 65,536 |
-| `nvidia/nemotron-3.5-lightning:free` | Ultra-fast general assistant model | **1,000,000** | 65,536 |
-| `nvidia/nemotron-3.5-super-vl:free` | Multimodal vision-language reasoning | **1,000,000** | 131,072 |
-| `poolside/laguna-s-2.1:free` | Code synthesis & refactoring specialist | **262,144** | 32,768 |
-| `poolside/laguna-xs-2.1:free` | Lightweight low-latency code assistant | **262,144** | 32,768 |
-| `dots-studio/dots-3-note-preview:free` | 512k context document summarization | **512,000** | 460,800 |
-| `liquid/lfm-2.5-2.6b:free` | Liquid Neural Network adaptive model | **65,536** | 8,192 |
-| `reflection/beam-free` | 1M context general assistant model | **1,048,576** | 131,072 |
-| `xingchen-agi/xing4.0-29b-a4b:free` | 29B conversational reasoning model | **262,144** | 235,929 |
-| `nvidia/nemotron-3.5-content-safety:free` | Safety classification & guardrails | **128,000** | 8,192 |
+> **Note on retired OpenCode IDs:** `minimax-m3.1-flash-free`, `exo-free`, `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`). `longcat-2.5-preview-free` is unavailable upstream (`402` / timeout), and `jev-1.13-free` rejects chat completions (`ModelProtocolUnsupported`). Dormant `/inference/openai/v1/responses` routing for `muse-spark-1.2/1.3-contributor-free` remains in `callOpenCode` only for backwards compatibility if re-enabled upstream.
 
-> **Note on retired Kilo ids:** `minimax/minimax-m3.1-flash:free`, `thinkingmachines/inkling-small:free` and `nvidia/nemotron-3-super-120b-a12b:free` were removed upstream (`404 The requested model is currently unavailable`) and are no longer advertised. `scripts/check-models.sh` guards against re-shipping ids that vanished.
+### 2. Kilo AI Curated Models (14 Models)
+
+| Model Identifier | Display Name in Code | Context Window | Max Output | Thinking |
+| :--- | :--- | :--- | :--- | :---: |
+| `kilo-auto/free` | `Kilo Auto Free` | **256,000** | 32,768 | — |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | `Nemotron 3 Ultra 550B Free (Kilo)` | **1,000,000** | 65,536 | ✅ |
+| `cohere/north-mini-code:free` | `North Mini Code Free (Kilo)` | **256,000** | 64,000 | — |
+| `openrouter/free` | `OpenRouter Free Auto (Kilo)` | **200,000** | 65,536 | — |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | `Nemotron 3 Nano Omni Free (Kilo)` | **256,000** | 65,536 | ✅ |
+| `nvidia/nemotron-3.5-lightning:free` | `Nemotron 3.5 Lightning Free (Kilo)` | **1,000,000** | 65,536 | — |
+| `nvidia/nemotron-3.5-super-vl:free` | `Nemotron 3.5 Super VL Free (Kilo)` | **1,000,000** | 131,072 | — |
+| `poolside/laguna-s-2.1:free` | `Poolside Laguna S 2.1 Free` | **262,144** | 32,768 | — |
+| `poolside/laguna-xs-2.1:free` | `Laguna XS 2.1 Free (Kilo)` | **262,144** | 32,768 | — |
+| `dots-studio/dots-3-note-preview:free` | `Dots3-Note Preview Free (Kilo)` | **512,000** | 460,800 | — |
+| `liquid/lfm-2.5-2.6b:free` | `LiquidAI LFM2.5 2.6B Free (Kilo)` | **65,536** | 8,192 | — |
+| `reflection/beam-free` | `Reflection Beam Free (Kilo)` | **1,048,576** | 131,072 | — |
+| `xingchen-agi/xing4.0-29b-a4b:free` | `Xingchen 4.0 29B Free (Kilo)` | **262,144** | 235,929 | — |
+| `nvidia/nemotron-3.5-content-safety:free` | `Nemotron 3.5 Content Safety Free (Kilo)` | **128,000** | 8,192 | — |
+
+> **Note on retired Kilo IDs:** `minimax/minimax-m3.1-flash:free`, `thinkingmachines/inkling-small:free`, and `nvidia/nemotron-3-super-120b-a12b:free` were removed upstream (`404 The requested model is currently unavailable`). `scripts/check-models.sh` and `scripts/probe-models.sh` guard against advertising dead IDs.
 
 ---
 
@@ -71,15 +78,15 @@ A high-performance, native dynamic C ABI plugin (`.so` / `.dylib` / `.dll`) for 
 ### Method 1: CLIProxyAPI Plugin Store (1-Click Install)
 
 1. Open your CLIProxyAPI Management Center (`#/plugin-store`).
-2. Search for **CPA Free-Tier Models** and click **Install**.
-3. **That's it!** The plugin automatically generates the provider descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) upon initialization.
+2. Search for **CPA Free-Tier Models** (`cpa-freetier-plugin`) and click **Install**.
+3. Upon initialization (`cliproxy_plugin_init` / `plugin.register`), the plugin automatically creates `~/.cli-proxy-api/cpa-freetier-plugin.json`.
 4. Restart CLIProxyAPI if prompted.
 
 ---
 
 ### Method 2: Manual Installation (All Platforms)
 
-Download the verified platform package from [Releases](https://github.com/tsaQB/cpa-freetier-plugin/releases/latest):
+Download the verified platform package from [Releases](https://github.com/tsaQB/cpa-freetier-plugin/releases/latest). Each `.zip` archive contains the compiled shared library (`cpa-freetier-plugin.so` / `.dylib` / `.dll`) and its companion plugin manifest (`cpa-freetier-plugin.json`).
 
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
@@ -114,160 +121,125 @@ rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.3.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` resides next to `cli-proxy-api.exe`.
+Extract `cpa-freetier-plugin_1.3.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
 
-#### Register Provider Descriptor & Enable
-In your `~/.cli-proxy-api/` directory, create `cpa-freetier-plugin.json`:
+#### Enable in `config.yaml` & Configure Descriptor
+Enable the plugin in CLIProxyAPI's `config.yaml`:
+```yaml
+plugins:
+  enabled: true
+  dir: "plugins" # or full path to plugins directory
+  configs:
+    cpa-freetier-plugin:
+      enabled: true
+```
+
+On startup, `ensureAuthDescriptor()` automatically writes `~/.cli-proxy-api/cpa-freetier-plugin.json` (and into `CPA_AUTH_DIR` / `AUTH_DIR` if those directories exist). You can optionally add `"excluded_models"` (or `"excluded-models"`) to hide models from `/v1/models` and block routing them upstream:
 ```json
 {
   "disabled": false,
   "provider": "cpa-freetier-plugin",
   "type": "cpa-freetier-plugin",
   "excluded_models": [
-    "muse*"
+    "muse*",
+    "kilo-auto/free"
   ]
 }
 ```
 
-> **Note on Model Exclusion:** You can exclude unstable or undesired models from `/v1/models` and prevent routing them upstream by specifying `"excluded_models"` in `cpa-freetier-plugin.json` (supports wildcards/globs like `"muse*"` or full IDs) or via environment variable `CPA_EXCLUDED_MODELS="muse*,kilo-auto/free"`.
-Enable the plugin in `config.yaml`:
-```yaml
-plugins:
-  enabled: true
-  dir: "plugins" # or full path to directory
-  configs:
-    cpa-freetier-plugin:
-      enabled: true
-```
-
 ---
 
-## 💡 How to Make OpenCode Free Models Work (Bypass 403 & 429 Errors)
+## 💡 How OpenCode Routing, Proxies & Sidecar Bypass Work
 
-OpenCode's free tier is zero-key, but its upstream Cloudflare WAF applies strict network and client heuristics. Follow these guidelines depending on your setup:
+While **Kilo AI** models (`callKilo`) always connect directly through the host's standard network environment (`http.ProxyFromEnvironment`), **OpenCode Zen** free-tier models (`callOpenCode`) pass through upstream Cloudflare WAF and v2 gate validation.
 
-### 🏠 1. Running on a Laptop, Home PC, or Residential Broadband
-* **Direct Out-of-the-Box:** It connects directly through your host network without needing any proxy. Cloudflare accepts residential broadband IPs seamlessly.
-* **Pro-tip:** If your machine doesn't have a local proxy pool running, set `OPENCODE_PROXY_POOL=""` in your environment to skip loopback probe checks and connect immediately.
+### 1. Endpoint Resolution (`getOpenCodeBaseURL`)
+On every OpenCode call, the plugin resolves the target endpoint in this exact order:
+1. **`OPENCODE_BASE_URL` environment variable:** If set, requests are sent to `<OPENCODE_BASE_URL>/inference/openai/v1/chat/completions`.
+2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/inference/openai/v1/chat/completions`.
+3. **Default Upstream:** Otherwise, requests go directly to `https://opencode.ai/inference/openai/v1/chat/completions`.
 
-### ☁️ 2. Running on a Cloud VPS / Datacenter (AWS, Hetzner, DO, etc.)
-* **The Error:** `403 Forbidden` (`FreeTierError: OpenCode's free tier can only be used from within OpenCode`).
-* **Root Cause:** Cloudflare WAF blocks datacenter Autonomous System Numbers (ASNs).
-* **The Fix:** Route OpenCode outbound requests through a residential, mobile (4G/LTE), or home proxy using `OPENCODE_PROXY`:
+> **Local Sidecar Bypass (`429 FreeUsageLimitError` / TLS Fingerprinting):**
+> If upstream OpenCode rejects standard Go `crypto/tls` handshakes or requires the full v2 12-tool preamble (`429 FreeUsageLimitError`), run a local Bun-based [`zen-proxy`](https://github.com/12errh/zen-proxy) sidecar on `127.0.0.1:8789` (ensuring it accepts `/inference/openai/v1/chat/completions` or setting `OPENCODE_BASE_URL` to your proxy base). When `targetURL` begins with `http://127.0.0.1` or `http://localhost`, the plugin automatically uses a direct local HTTP client (`getHTTPClient(false)`) so traffic to the local sidecar is never double-proxied through `OPENCODE_PROXY`, and local errors do not invalidate the outbound proxy cache.
+
+### 2. Outbound Egress & Proxy Selection (`getOpenCodeProxy`)
+When calling the remote `https://opencode.ai` upstream (`isLocal == false`), Cloudflare WAF blocks datacenter ASNs with `403 Forbidden` (`FreeTierError: OpenCode's free tier can only be used from within OpenCode`). The plugin selects outbound egress in this exact order:
+1. **`OPENCODE_PROXY`:** Explicit proxy URL override (`http://`, `https://`, `socks5://`, `socks5h://`). Always wins if set.
+2. **`OPENCODE_PROXY_POOL`:** Comma-separated list of candidate proxies (`host:port` or full URL; bare `host:port` defaults to `http://`). Defaults to `127.0.0.1:8127`. Each candidate is tested via a `60ms` TCP dial, and the first reachable proxy is cached for `30s` (`proxyProbeTTL`).
+3. **`OPENCODE_DATACENTER_PROXY_POOL` (Opt-in only):** Consulted **only** when `OPENCODE_ALLOW_DATACENTER` is enabled (`1`, `true`, `yes`, `on`). Defaults to `127.0.0.1:8123,127.0.0.1:8124,127.0.0.1:8125,127.0.0.1:8126`.
+4. **Ambient / Direct Network Fallback:** If no pool candidate is reachable (or `OPENCODE_PROXY_POOL=""`), the plugin falls back to `http.ProxyFromEnvironment` (respecting `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`, or connecting direct).
+
+### 3. Quick Setup by Environment
+
+* **🏠 Laptop, Home PC, or Residential Broadband:**
+  Works 100% direct out-of-the-box. Since `127.0.0.1:8127` is not listening on a standard laptop, the 60ms probe fails and requests go direct over your residential IP. To disable the loopback probe entirely:
   ```bash
-  export OPENCODE_PROXY="http://user:password@residential-proxy.net:8080"
+  export OPENCODE_PROXY_POOL=""
+  ```
+* **☁️ Cloud VPS / Datacenter Host (AWS, Hetzner, DigitalOcean, etc.):**
+  Provide a residential, mobile (4G/LTE), or SOCKS5 proxy so OpenCode does not return `403 FreeTierError`:
+  ```bash
+  export OPENCODE_PROXY="http://user:password@your-residential-proxy:8080"
   # or SOCKS5h:
   export OPENCODE_PROXY="socks5h://127.0.0.1:1080"
+  # or a comma-separated fallback pool:
+  export OPENCODE_PROXY_POOL="127.0.0.1:8127,proxy.example.net:3128"
   ```
-  *(Note: Kilo AI models work direct from anywhere and do not require residential proxies).*
-
-### 🛡️ 3. Upstream TLS Fingerprinting & Rate Limits (429 Bypass)
-* **New in v1.3.0:** The plugin automatically detects if a local Bun sidecar TLS bridge is running on `127.0.0.1:8789`. If present, it routes OpenCode traffic locally through the sidecar, completely bypassing HTTP client TLS-fingerprint blocks.
-* **Custom Sidecar:** You can also point to any custom sidecar gateway via:
-  ```bash
-  export OPENCODE_BASE_URL="http://127.0.0.1:8789"
-  ```
-
-### 🤖 4. Coding Agent Payload Compatibility (Cursor, Cline, Hermes, Synaplan)
-* **New in v1.3.0:** Full automatic message role normalization (`role: ""` -> `"user"`, `developer` -> `"system"`, nil content repair) to eliminate `failed to convert messages` errors.
-* Unsupported agent parameters (`thinking_budget`, `enable_thinking`, `search`) are automatically stripped, while official `reasoning_effort` is preserved for frontier models like `flint-40b-free`.
-
----
-
-## 🌐 Optional Outbound Proxy Support
-
-The plugin **works 100% direct out-of-the-box without requiring any proxy**.
-
-However, if your host is hosted in a restricted cloud datacenter and you want to route OpenCode requests through custom residential, mobile, or SOCKS5 proxies to eliminate rate-limits, define `OPENCODE_PROXY`:
-
-```bash
-# Supports HTTP, HTTPS, or SOCKS5 proxies
-export OPENCODE_PROXY="http://127.0.0.1:8080"
-# or
-export OPENCODE_PROXY="socks5h://127.0.0.1:1080"
-```
-
-If `OPENCODE_PROXY` is unset, the plugin probes a residential/local pool and otherwise falls back to the host's standard network interface.
-
-> **Datacenter egress is opt-in.** The OpenCode free tier rejects datacenter ASNs with `403 FreeTierError`, so the built-in Xray chains are **not** used as an OpenCode fallback. If you really want them, set `OPENCODE_ALLOW_DATACENTER=1` — expect 403s.
 
 ---
 
 ## 🛠 Environment Variables
 
+### Plugin Runtime Variables (`main.go`)
+
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `OPENCODE_PROXY` | *(unset)* | Explicit egress for OpenCode (`http://`, `socks5h://`). Wins over the pools below. |
-| `OPENCODE_PROXY_POOL` | `127.0.0.1:8127` | Ordered candidates probed before falling back to the host network. Comma-separated `host:port` or full URLs. **Set it to an empty value to disable probing entirely** (recommended on a laptop/VPS that has no local proxy). |
-| `OPENCODE_DATACENTER_PROXY_POOL` | `127.0.0.1:8123..8126` | Only consulted when `OPENCODE_ALLOW_DATACENTER=1`. |
-| `OPENCODE_ALLOW_DATACENTER` | `0` | Allow datacenter egress for OpenCode. Off because it is rejected upstream. |
-| `CPA_FREETIER_LOG` | `<home>/.cli-proxy-api/logs/cpa-freetier-plugin.log` | Log destination (portable; falls back to `os.TempDir()` only if no home directory is resolvable). |
-| `CPA_FREETIER_DEBUG` | `0` | Verbose diagnostics. Request **bodies are never logged**, with or without this. |
-| `CPA_STRIP_FIELDS` | *(unset)* | Extra comma-separated request fields to strip before forwarding. |
-| `CPA_KEEP_FIELDS` | *(unset)* | Comma-separated request fields to keep even if they are in the default strip list. Wins over `CPA_STRIP_FIELDS`. |
-| `CPA_NO_AUTH_DESCRIPTOR` | `0` | Set to `1` to stop the plugin writing the provider descriptor file. |
-| `OPENCODE_BASE_URL` | *(unset)* | Override the OpenCode base URL. |
+| `OPENCODE_BASE_URL` | *(unset; auto-probes `127.0.0.1:8789`)* | Override the OpenCode base URL (appends `/inference/openai/v1/chat/completions`). If unset and `127.0.0.1:8789` is reachable within 50ms, uses `http://127.0.0.1:8789`; otherwise uses `https://opencode.ai`. |
+| `OPENCODE_PROXY` | *(unset)* | Explicit proxy URL for remote OpenCode calls (`http://`, `https://`, `socks5://`, `socks5h://`). Wins over the pools below. |
+| `OPENCODE_PROXY_POOL` | `127.0.0.1:8127` | Comma-separated `host:port` or proxy URLs probed in order (60ms dial timeout, cached 30s). Set to `""` (empty) to disable probing. |
+| `OPENCODE_ALLOW_DATACENTER` | `0` | Enable (`1`, `true`, `yes`, `on`) to allow falling back to `OPENCODE_DATACENTER_PROXY_POOL`. Off by default because OpenCode rejects datacenter ASNs with `403 FreeTierError`. |
+| `OPENCODE_DATACENTER_PROXY_POOL` | `127.0.0.1:8123,127.0.0.1:8124,127.0.0.1:8125,127.0.0.1:8126` | Datacenter proxy candidates probed only when `OPENCODE_ALLOW_DATACENTER` is enabled. |
+| `CPA_EXCLUDED_MODELS` | *(unset)* | Comma-separated list or JSON array (e.g. `muse*,kilo-auto/free` or `["muse*"]`) of model IDs/globs to hide from `/v1/models` and block with `404 model_not_found`. Combined with `"excluded_models"` / `"excluded-models"` from auth descriptor JSON files (cached 2s). |
+| `CPA_STRIP_FIELDS` | *(unset)* | Extra comma-separated top-level JSON request fields to strip during payload sanitization. |
+| `CPA_KEEP_FIELDS` | *(unset)* | Comma-separated top-level JSON request fields to keep even if present in `defaultSanitizeFields` or `CPA_STRIP_FIELDS`. Wins over `CPA_STRIP_FIELDS`. |
+| `CPA_FREETIER_LOG` | `<home>/.cli-proxy-api/logs/cpa-freetier-plugin.log` | Log file path (`0600` permissions, rotates at `8 MiB` keeping one `.1` file). Falls back to `<os.TempDir()>/cpa_plugin.log` if home directory is unresolvable or the log directory cannot be created. |
+| `CPA_FREETIER_DEBUG` | `0` | Enable (`1`, `true`, `yes`, `on`) for verbose diagnostic logging. Request bodies are **never** logged (only byte length and 8-byte SHA-256 hex prefix). |
+| `CPA_NO_AUTH_DESCRIPTOR` | `0` | Enable (`1`, `true`, `yes`, `on`) to prevent `ensureAuthDescriptor()` from creating `cpa-freetier-plugin.json`. |
+| `CLI_PROXY_AUTH_DIR` | *(unset)* | Additional auth directory scanned by `getAuthDirs()` for descriptor JSON files (`excluded_models`). |
+| `CPA_AUTH_DIR` | *(unset)* | Additional auth directory used by both `ensureAuthDescriptor()` (writes `cpa-freetier-plugin.json` if dir exists) and `getAuthDirs()`. |
+| `AUTH_DIR` | *(unset)* | Additional auth directory checked by `ensureAuthDescriptor()` when writing `cpa-freetier-plugin.json`. |
 
-Logs rotate at 8 MiB with a single `.1` generation kept, so the file cannot grow without bound. The log file is created `0600`.
+### Verification Script Variables (`scripts/`)
+
+| Variable | Script | Default | Purpose |
+| :--- | :--- | :--- | :--- |
+| `KILO_MODELS_URL` | `check-models.sh` | `https://api.kilo.ai/api/gateway/models` | Upstream Kilo catalogue URL. |
+| `ZEN_MODELS_URL` | `check-models.sh` | `https://opencode.ai/zen/v1/models` | Upstream OpenCode Zen catalogue URL. |
+| `PROBE_PROXY` | `probe-models.sh` | *(unset)* | Comma-separated proxy URLs rotated across live model probe attempts. |
+| `PROBE_ATTEMPTS` | `probe-models.sh` | `3` | Maximum attempts per model before reporting `INCONCLUSIVE`. |
+| `PROBE_SLEEP` | `probe-models.sh` | `2` | Delay in seconds between sequential model probes. |
+| `KILO_URL` | `probe-models.sh` | `https://api.kilo.ai/api/gateway/chat/completions` | Upstream Kilo chat completions endpoint for live probes. |
 
 ---
 
 ## 🩺 Verifying the Catalogue
 
-Two scripts, because catalogue presence is not liveness:
+Two verification scripts are included because catalogue presence does not guarantee liveness:
 
 | Command | What it does |
 | :--- | :--- |
-| `make check-models` | Diffs the advertised ids against the live upstream catalogues. Fails the build when an id vanished from the catalogue. |
-| `make probe-models PROBE_PROXY=http://127.0.0.1:8127` | **Calls** every advertised model and classifies the answer: alive / dead / inconclusive. Fails the build on a dead id. |
-
-`check-models` alone is not enough: `nvidia/nemotron-3-super-120b-a12b:free` was still itemised in the Kilo catalogue while every live call returned `404 The requested model is currently unavailable`. The probe is what catches that class of drift.
-
-`probe-models` needs **residential** egress for real verdicts — the free tier answers datacenter ASNs with `403 FreeTierError`, which is reported as *inconclusive* rather than a false "dead". `PROBE_PROXY` accepts a comma-separated list and rotates through it, so one rate-limited egress does not paint the whole catalogue grey.
+| `make check-models` | Runs `./scripts/check-models.sh main.go`. Diffs `kiloModels` (fatal) and `openCodeModels` (warning) against live upstream catalogue endpoints (`kilo-auto/*` and `openrouter/*` router aliases are exempted). |
+| `make probe-models PROBE_PROXY=http://127.0.0.1:8127` | Runs `./scripts/probe-models.sh main.go`. Sends live cloaked requests to every model in `kiloModels` and `openCodeModels` and classifies responses into `ALIVE` (`200`), `DEAD` (`404` / `410` / missing markers — fails with exit code 1), or `INCONCLUSIVE` (`401` / `403` / `429` / `5xx` / timeout). |
+| `make verify` | Runs `go vet ./...`, `go test ./...`, and `./scripts/check-models.sh main.go`. |
 
 ---
 
-## 💻 Running on a Laptop or Your Own VPS
+## 🔒 Architecture & Reliability Details (v1.3.0)
 
-**Nothing extra is required.** The plugin has no dependency on this project's lab
-setup:
-
-* With no proxy configured it connects directly through the host's normal
-  network path (respecting `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`).
-* The built-in proxy pools are loopback addresses that simply do not answer
-  elsewhere; the probe fails and the request goes direct. If you would rather not
-  even probe, set `OPENCODE_PROXY_POOL=` (empty).
-* The log lands in your home directory, not in `/tmp`, and rotates.
-
-If you see `403 FreeTierError` from a model, that is an **egress-IP** decision by
-OpenCode — the free tier refuses hosts on datacenter ASNs. The fix is a
-residential/mobile egress, not a plugin setting:
-
-```bash
-export OPENCODE_PROXY="http://user:pass@your-residential-proxy:8080"
-# probing a pool instead of a single proxy
-export OPENCODE_PROXY_POOL="127.0.0.1:8127,proxy.example.net:3128"
-```
-
-If you see `500 Internal Server Error` with an empty body and an
-`x-opencode-log-id` header, that is the upstream gateway failing — the plugin
-reports it verbatim and the model is left alone.
-
----
-
-## 🔒 Reliability Notes (v1.3.0)
-
-* **OpenCode v2 Gate Bypass & Sidecar Routing:** Resolves the upstream `429 FreeUsageLimitError` caused by OpenCode's October 2026 TLS-fingerprinting and harness validation. The plugin now automatically checks for a local Bun sidecar running on `127.0.0.1:8789` (or custom via `OPENCODE_BASE_URL`) and routes OpenCode requests to it locally, preserving residential proxy egress.
-* **Empty Role Sanitization:** Sanitizes client messages with empty or invalid roles (`developer` -> `system`, missing/empty -> `user`) to prevent upstream schema rejection.
-* **Operator Model Exclusion:** Supports `CPA_EXCLUDED_MODELS` (glob/comma-separated) to selectively disable specific free models without rebuilding the binary.
-* **Bounded logging.** Request bodies are replaced by a length + short SHA-256 prefix. The previous build wrote the full conversation to a fixed path with no cap — on a 512 MiB tmpfs that reached 393 MiB in ~90 minutes.
-* **Connection reuse.** Transports are process-wide and cached per egress, with `ResponseHeaderTimeout` so a hung upstream cannot pin a goroutine forever.
-* **Correct fallback.** Datacenter proxies are no longer used for OpenCode; the reachability probe is cached for 30s instead of dialing on every request.
-* **Model health.** A model the upstream reports as missing (`404` / "does not exist" / "unknown provider") is temporarily hidden from the published catalog and restored automatically when it answers again.
-* **Bounded SSE lines.** A single `data:` line may reach 16 MiB; the old 2 MiB scanner limit aborted legitimately large tool-call streams.
-* **Exactly-once stream close**, session-cache sweeping, and size-safe C buffer copies.
-* **`reasoning_effort` is forwarded.** The upstream gateway accepts it on every advertised model and it measurably changes how much the model reasons, so the sanitizer no longer removes it. Parameters the upstream genuinely rejects (`enable_thinking`, `thinking_budget`, …) are still stripped, and `CPA_KEEP_FIELDS` re-enables any of them for a deployment whose upstream tolerates them.
-* **Live liveness probe.** `make probe-models` calls every advertised model and verifies actual response (200 OK) instead of trusting catalogue listings alone.
+* **Bounded, Privacy-Safe Logging:** Request bodies are never written to disk; only payload byte length and an 8-byte SHA-256 hex fingerprint (`payloadFingerprint`) are logged. The log file (`0600`) rotates at `8 MiB` (`maxLogBytes`) with one `.1` backup.
+* **Per-Egress Connection Pooling:** `http.Transport` instances are cached process-wide per egress key (`MaxIdleConns: 128`, `MaxIdleConnsPerHost: 32`, `IdleConnTimeout: 90s`, `TLSHandshakeTimeout: 15s`, `ResponseHeaderTimeout: 120s`, `ExpectContinueTimeout: 1s`, `ForceAttemptHTTP2: false`). On remote transport errors, both the cached transport and proxy probe cache are invalidated immediately.
+* **Bounded 16 MiB SSE Scanner:** Both streaming (`executeStream`) and non-streaming (`execute`) SSE readers allocate a 256 KiB initial buffer able to grow to `16 MiB` (`maxSSELineBytes`) per `data:` line so large tool-call arguments never abort with `bufio.ErrTooLong`.
+* **2 GiB+ C-ABI Buffer Safety:** `cliproxyPluginCall` copies request bytes via `unsafe.Slice` over `size_t` instead of `C.GoBytes` (`C.int`), avoiding 32-bit length truncation.
 
 ---
 
@@ -278,11 +250,12 @@ Test your deployment via `curl` against your local CLIProxyAPI instance (`:8317`
 ### Streaming Call
 ```bash
 curl -N http://127.0.0.1:8317/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_CPA_KEY" \
+  -H "Authorization: Bearer your-cpa-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "big-pickle",
+    "model": "flint-40b-free",
     "messages": [{"role": "user", "content": "Explain quantum tunneling in two sentences."}],
+    "reasoning_effort": "medium",
     "stream": true
   }'
 ```
@@ -294,13 +267,13 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://127.0.0.1:8317/v1",
-    api_key=os.getenv("CLIPROXY_API_KEY", "your-cpa-key")
+    api_key=os.getenv("CLIPROXY_API_KEY", "your-cpa-key"),
 )
 
 response = client.chat.completions.create(
-    model="glm-5.3-flash-free",
+    model="flint-40b-free",
     messages=[{"role": "user", "content": "Hello world!"}],
-    stream=True
+    stream=True,
 )
 
 for chunk in response:
@@ -313,21 +286,30 @@ print()
 
 ## 🏗️ Building From Source
 
-Prerequisites: Go 1.22+ and GCC toolchains.
+Prerequisites: **Go 1.22+** with `CGO_ENABLED=1` and platform GCC toolchains (`gcc`, `aarch64-linux-gnu-gcc`, `x86_64-w64-mingw32-gcc`). `pluginVersion` is stamped automatically from `git describe --tags` via `-ldflags "-s -w -X main.pluginVersion=$(VERSION)"`.
 
 ```bash
 # Clone the repository
 git clone https://github.com/tsaQB/cpa-freetier-plugin.git
 cd cpa-freetier-plugin
 
-# Build Linux AMD64 (.so)
-make build-linux-amd64
+# Build default Linux AMD64 shared library (dist/cpa-freetier-plugin_linux_amd64.so)
+make build
+# or: make build-linux-amd64 (alias: make build-amd64)
 
-# Build Linux ARM64 (.so)
+# Build Linux ARM64 shared library (dist/cpa-freetier-plugin_linux_arm64.so)
 make build-linux-arm64
+# (alias: make build-arm64)
 
-# Build Windows AMD64 (.dll)
+# Build Windows AMD64 DLL (dist/cpa-freetier-plugin_windows_amd64.dll)
 make build-windows-amd64
+# (alias: make build-windows)
+
+# Build all three targets (Linux AMD64, Linux ARM64, Windows AMD64)
+make all
+
+# Run go vet, unit tests, and upstream catalogue check
+make verify
 ```
 
 ---
