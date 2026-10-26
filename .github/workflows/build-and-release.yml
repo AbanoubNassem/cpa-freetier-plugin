@@ -43,7 +43,7 @@ jobs:
             arch: amd64
             ext: dll
             cc: x86_64-w64-mingw32-gcc
-            packages: gcc-mingw-w64-x86-64 zip
+            packages: gcc-mingw-w64-x86-64-posix zip
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
           CC: ${{ matrix.cc }}
         run: |
           mkdir -p build/${{ matrix.target }}
-          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }} main.go
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }} .
           sed 's/"entrypoint": "cpa-freetier-plugin.so"/"entrypoint": "cpa-freetier-plugin.${{ matrix.ext }}"/' plugin.json > build/${{ matrix.target }}/cpa-freetier-plugin.json
 
       - name: Package Release Archives
@@ -142,7 +142,7 @@ jobs:
           CGO_LDFLAGS: ${{ matrix.cflags }}
         run: |
           mkdir -p build/${{ matrix.target }}
-          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.dylib main.go
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w -X main.pluginVersion=${{ steps.tag.outputs.version }}" -o build/${{ matrix.target }}/cpa-freetier-plugin.dylib .
           cp build/${{ matrix.target }}/cpa-freetier-plugin.dylib build/${{ matrix.target }}/cpa-freetier-plugin.so
           sed 's/"entrypoint": "cpa-freetier-plugin.so"/"entrypoint": "cpa-freetier-plugin.dylib"/' plugin.json > build/${{ matrix.target }}/cpa-freetier-plugin.json
 
@@ -260,7 +260,7 @@ jobs:
           set -o pipefail
           ext="${{ runner.os == 'Windows' && 'dll' || 'dylib' }}"
           mkdir -p build/portability
-          if go build -buildmode=c-shared -trimpath -o "build/portability/cpa-freetier-plugin.${ext}" main.go 2>&1 | tee build-portability.log; then
+          if go build -buildmode=c-shared -trimpath -o "build/portability/cpa-freetier-plugin.${ext}" . 2>&1 | tee build-portability.log; then
             ls -la build/portability
           else
             while IFS= read -r line; do echo "::error::$line"; done < <(tail -8 build-portability.log)
@@ -278,13 +278,13 @@ jobs:
             goos: linux
             goarch: arm64
             cc: aarch64-linux-gnu-gcc
-            toolchain: gcc-aarch64-linux-gnu
+            toolchain: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
             ext: so
           - target: windows_amd64
             goos: windows
             goarch: amd64
             cc: x86_64-w64-mingw32-gcc
-            toolchain: gcc-mingw-w64-x86-64
+            toolchain: gcc-mingw-w64-x86-64-posix
             ext: dll
     steps:
       - name: Checkout repository
@@ -299,7 +299,7 @@ jobs:
       - name: Install cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${{ matrix.toolchain }}
+          sudo apt-get install -y --no-install-recommends ${{ matrix.toolchain }}
 
       - name: Build shared library
         shell: bash
@@ -315,7 +315,7 @@ jobs:
           # c-shared needs a platform-appropriate extension (.so / .dll): the
           # linker derives the import library from it.
           if go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
-               -o "build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }}" main.go 2>&1 | tee build-${{ matrix.target }}.log; then
+               -o "build/${{ matrix.target }}/cpa-freetier-plugin.${{ matrix.ext }}" . 2>&1 | tee build-${{ matrix.target }}.log; then
             ls -la build/${{ matrix.target }}
           else
             # The job log is not always retrievable, but workflow annotations are:

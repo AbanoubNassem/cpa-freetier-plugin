@@ -3,17 +3,26 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.3.0-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.4.0-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
-A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+). It provides out-of-the-box access to **24 curated, 100% free AI models** across **OpenCode Zen** (10 models) and **Kilo AI** (14 models) without requiring user accounts, API keys, credits, or subscriptions.
+A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) for **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** (v7+). It provides out-of-the-box access to **24 curated, 100% free AI models** across **OpenCode Zen** (10 models) and **Kilo AI** (14 models), plus the models your **OmniRush** account is actually served, alongside a native **Management Center Web Dashboard** directly accessible in the CPA UI without requiring user API keys or subscriptions.
 
 ---
 
-## 🌟 Key Features (v1.3.0)
+## 🌟 Key Features (v1.4.0)
 
 * **Zero-Key & Auto-Registered:** Ready to use immediately. Automatically writes its provider auth descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) on `cliproxy_plugin_init`, `plugin.register`, and `plugin.reconfigure` unless disabled via `CPA_NO_AUTH_DESCRIPTOR=1`.
+* **Native Management Center Dashboard (`management_api`):**
+  * Registers directly into the CLIProxyAPI Management Center UI sidebar under **"Free Tier Plugin"** (`/v0/resource/plugins/cpa-freetier-plugin/dashboard`).
+  * **1-Click OmniRush Device Flow:** Complete OAuth 2.0 Device Code Authorization directly in the browser; polls and stores rotated tokens to `~/.omnirush/auth.json` atomically with `0600` permissions.
+  * **Interactive Model Fleet Manager:** Dynamically toggle active/excluded models on the fly; updates `excluded_models` in `cpa-freetier-plugin.json` without restarting CPA.
+  * **Network & Proxy Diagnostic Matrix:** Visual status indicators for the Bun TLS sidecar (`:8789`), Residential proxy pool (`:8127`), and upstream latency pinging.
+* **OmniRush Frontier Integration:**
+  * Speaks the gateway's **OpenAI Responses API** (`POST https://omnirush.ai/omnirush/v1/responses`) and translates both directions: Chat Completions requests in, `response.output_text.delta` / `function_call` / `response.completed` SSE events back out as standard `chat.completion.chunk` frames (text, reasoning, tool calls and usage all preserved).
+  * **Live model catalog:** the advertised OmniRush ids come from the account's own `GET /v1/models` (cached 10 minutes), so a model the gateway starts or stops serving needs no plugin release. Only ids the account can actually call are listed.
+  * Automatic token refresh and rotation with mutex-locked grace window handling on HTTP `401`.
 * **OpenCode v2 Wire Protocol & Automatic Sidecar Routing:**
   * Implements the OpenCode v2 CLI contract (`opencode/latest/2.0.32/cli`), descending-timestamp session affinity (`ses_<12-hex><14-base62>`, 30-minute TTL with automatic expiry sweeping), and automatic `read`/`shell` fingerprint tool injection (renaming caller `read`/`shell` tools to `read_client`/`shell_client` on send and restoring them transparently in responses).
   * **Local Sidecar Auto-Detection (`127.0.0.1:8789`):** Automatically probes `127.0.0.1:8789` (50ms TCP timeout) or uses `OPENCODE_BASE_URL` to route OpenCode requests through a local Bun/TLS sidecar (such as [`zen-proxy`](https://github.com/12errh/zen-proxy)) when available, bypassing upstream TLS/JA3 fingerprinting and 12-tool manifest checks (`429 FreeUsageLimitError` / `403 FreeTierError`) without double-proxying.
@@ -29,11 +38,27 @@ A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) f
 
 ---
 
-## 📋 Supported Free Models (24 Total)
+## 📋 Supported Free Models (24 curated + live OmniRush catalog)
 
-Both bare model IDs (e.g. `flint-40b-free`, `kilo-auto/free`) and provider-prefixed IDs (`opencode/<id>`, `kilo/<id>`) are accepted when calling the plugin.
+Bare model IDs (e.g. `flint-40b-free`, `kilo-auto/free`, `gpt-6-astra`) as well as provider-prefixed IDs (`opencode/<id>`, `kilo/<id>`, `omnirush/<id>`) are accepted when calling the plugin.
 
-### 1. OpenCode Zen Frontier Models (10 Models)
+### 1. OmniRush Frontier Models (Live Gateway Catalog)
+
+The plugin asks the account's gateway (`GET <gateway>/models`) which ids it is served, caches the answer for 10 minutes, and advertises exactly those. When the gateway is unreachable the known-good fallback set is used.
+
+| Model Identifier | Display Name in Code | Context Window | Max Output | Thinking / Reasoning Levels |
+| :--- | :--- | :--- | :--- | :---: |
+| `gpt-6-astra` | `GPT 6 Astra (OmniRush)` | **400,000** | 128,000 | ✅ (`low`, `high`, `xhigh`, `max`) |
+| `gpt-6.1-sol` | `GPT 6.1 Sol (OmniRush)` | **400,000** | 128,000 | ✅ (`low`, `high`, `xhigh`, `max`) |
+| `gpt-6-sol` | `GPT 6 Sol (OmniRush)` | **400,000** | 128,000 | ✅ (`low`, `high`, `xhigh`, `max`) |
+
+> **Why the list is dynamic:** a Muse Spark id that the gateway does not serve for an account answers `400 {"detail":"model_unavailable"}`. Listing it would only make agents pick a model that cannot answer, so the catalog is read from the account rather than hardcoded.
+
+> **Connecting OmniRush:** OmniRush accounts can be connected in 1 click via the native CPA Management Dashboard (`/v0/resource/plugins/cpa-freetier-plugin/dashboard`), by pasting `auth.json` / a refresh token into the dashboard's import drawer, or by placing credentials in `~/.omnirush/auth.json` (auto-detected).
+
+> **Wire protocol:** the gateway only accepts `POST <gateway>/v1/responses` with `stream: true` and `store: false`, and refuses requests that carry `x-omnirush-session-id` unless they come from the official CLI (`403 official_client_required`). The plugin therefore issues a plain Responses stream and translates it back to Chat Completions, which is why tool calls, reasoning summaries and usage all survive the round trip.
+
+### 2. OpenCode Zen Frontier Models (10 Models)
 
 | Model Identifier | Display Name in Code | Context Window | Max Output | Thinking |
 | :--- | :--- | :--- | :--- | :---: |
@@ -50,7 +75,7 @@ Both bare model IDs (e.g. `flint-40b-free`, `kilo-auto/free`) and provider-prefi
 
 > **Note on retired OpenCode IDs:** `minimax-m3.1-flash-free`, `exo-free`, `space-bunny-free`, `muse-spark-1.2-contributor-free`, and `muse-spark-1.3-contributor-free` were retired upstream (`410 ModelDeprecated` / `400 unknown model`). `longcat-2.5-preview-free` is unavailable upstream (`402` / timeout), and `jev-1.13-free` rejects chat completions (`ModelProtocolUnsupported`). Dormant `/inference/openai/v1/responses` routing for `muse-spark-1.2/1.3-contributor-free` remains in `callOpenCode` only for backwards compatibility if re-enabled upstream.
 
-### 2. Kilo AI Curated Models (14 Models)
+### 3. Kilo AI Curated Models (14 Models)
 
 | Model Identifier | Display Name in Code | Context Window | Max Output | Thinking |
 | :--- | :--- | :--- | :--- | :---: |
@@ -91,7 +116,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.4.0/cpa-freetier-plugin_1.4.0_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -99,7 +124,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.4.0/cpa-freetier-plugin_1.4.0_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -107,7 +132,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.4.0/cpa-freetier-plugin_1.4.0_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -115,13 +140,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.3.0/cpa-freetier-plugin_1.3.0_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.4.0/cpa-freetier-plugin_1.4.0_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.3.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
+Extract `cpa-freetier-plugin_1.4.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
 
 #### Enable in `config.yaml` & Configure Descriptor
 Enable the plugin in CLIProxyAPI's `config.yaml`:
@@ -190,7 +215,22 @@ When calling the remote `https://opencode.ai` upstream (`isLocal == false`), Clo
 
 ## 🛠 Environment Variables
 
-### Plugin Runtime Variables (`main.go`)
+### OmniRush Accounts
+
+`~/.cli-proxy-api/omnirush-accounts.json` holds every signed-in identity (`version: 2`). Each entry keeps
+its own token pair, `enabled` flag, `lastUsed`, `lastError` and `cooldownUntil`.
+
+- Rotation: least recently used first; a failing account is skipped for 45 s (5 min on auth failure).
+- Failover is per request and bounded to three accounts, so a pool where everything is broken fails fast.
+- `POST`-only shapes are unavailable on plugin resource routes, so add/remove/toggle travel as query params
+  with the dashboard token header.
+
+### Settings File
+
+`~/.cli-proxy-api/cpa-freetier-settings.json` (`0600`) is written by the dashboard and wins over the
+environment variables below. Delete it, or press **Reset** in the sheet, to fall back to them.
+
+### Plugin Runtime Variables (`main.go`, `omnirush.go`, `management.go`)
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
@@ -199,6 +239,12 @@ When calling the remote `https://opencode.ai` upstream (`isLocal == false`), Clo
 | `OPENCODE_PROXY_POOL` | `127.0.0.1:8127` | Comma-separated `host:port` or proxy URLs probed in order (60ms dial timeout, cached 30s). Set to `""` (empty) to disable probing. |
 | `OPENCODE_ALLOW_DATACENTER` | `0` | Enable (`1`, `true`, `yes`, `on`) to allow falling back to `OPENCODE_DATACENTER_PROXY_POOL`. Off by default because OpenCode rejects datacenter ASNs with `403 FreeTierError`. |
 | `OPENCODE_DATACENTER_PROXY_POOL` | `127.0.0.1:8123,127.0.0.1:8124,127.0.0.1:8125,127.0.0.1:8126` | Datacenter proxy candidates probed only when `OPENCODE_ALLOW_DATACENTER` is enabled. |
+| `OMNIRUSH_AUTH_FILE` | `<home>/.omnirush/auth.json` | Explicit file path to stored OmniRush OAuth credentials. Also checks `<home>/.cli-proxy-api/omnirush-auth.json` as fallback. |
+| `OMNIRUSH_DIR` | `<home>/.omnirush` | Directory containing OmniRush `auth.json`. |
+| `OMNIRUSH_ACCESS_TOKEN` | *(unset)* | Direct Bearer access token override for OmniRush. If set, bypasses file reads. |
+| `OMNIRUSH_REFRESH_TOKEN` | *(unset)* | Refresh token paired with `OMNIRUSH_ACCESS_TOKEN` for automatic rotation. |
+| `OMNIRUSH_BASE_URL` | `https://omnirush.ai/omnirush` | Custom OmniRush gateway origin. The plugin appends `/v1` and calls `/v1/responses` and `/v1/models` on it. |
+| `OMNIRUSH_PROXY` | *(unset)* | Proxy URL for outbound OmniRush OAuth and model calls. |
 | `CPA_EXCLUDED_MODELS` | *(unset)* | Comma-separated list or JSON array (e.g. `muse*,kilo-auto/free` or `["muse*"]`) of model IDs/globs to hide from `/v1/models` and block with `404 model_not_found`. Combined with `"excluded_models"` / `"excluded-models"` from auth descriptor JSON files (cached 2s). |
 | `CPA_STRIP_FIELDS` | *(unset)* | Extra comma-separated top-level JSON request fields to strip during payload sanitization. |
 | `CPA_KEEP_FIELDS` | *(unset)* | Comma-separated top-level JSON request fields to keep even if present in `defaultSanitizeFields` or `CPA_STRIP_FIELDS`. Wins over `CPA_STRIP_FIELDS`. |
@@ -234,12 +280,17 @@ Two verification scripts are included because catalogue presence does not guaran
 
 ---
 
-## 🔒 Architecture & Reliability Details (v1.3.0)
+## 🔒 Architecture & Reliability Details (v1.4.0)
 
 * **Bounded, Privacy-Safe Logging:** Request bodies are never written to disk; only payload byte length and an 8-byte SHA-256 hex fingerprint (`payloadFingerprint`) are logged. The log file (`0600`) rotates at `8 MiB` (`maxLogBytes`) with one `.1` backup.
 * **Per-Egress Connection Pooling:** `http.Transport` instances are cached process-wide per egress key (`MaxIdleConns: 128`, `MaxIdleConnsPerHost: 32`, `IdleConnTimeout: 90s`, `TLSHandshakeTimeout: 15s`, `ResponseHeaderTimeout: 120s`, `ExpectContinueTimeout: 1s`, `ForceAttemptHTTP2: false`). On remote transport errors, both the cached transport and proxy probe cache are invalidated immediately.
 * **Bounded 16 MiB SSE Scanner:** Both streaming (`executeStream`) and non-streaming (`execute`) SSE readers allocate a 256 KiB initial buffer able to grow to `16 MiB` (`maxSSELineBytes`) per `data:` line so large tool-call arguments never abort with `bufio.ErrTooLong`.
 * **2 GiB+ C-ABI Buffer Safety:** `cliproxyPluginCall` copies request bytes via `unsafe.Slice` over `size_t` instead of `C.GoBytes` (`C.int`), avoiding 32-bit length truncation.
+* **Referral on sign-up:** every console link the dashboard hands out carries the configured referral (`identity.referralCode`, default `5WSC5CWX`, override with `OMNIRUSH_REFERRAL_CODE`), so a brand-new account credits the operator. The device-code query is preserved, so approving still works. The drawer exposes it only as a neutral "Register Now" button — no invite URL or code is rendered. Override with `OMNIRUSH_REFERRAL_CODE` or `-` to disable.
+* **OmniRush Account Pool:** several OmniRush accounts can be signed in at once. They live in `~/.cli-proxy-api/omnirush-accounts.json` (`0600`, override with `OMNIRUSH_ACCOUNTS_FILE`); a legacy `~/.omnirush/auth.json` is migrated automatically on first run. Requests go to the least recently used healthy account, and a `401`, `429`, `402`, `403` or timeout benches that account for a cooldown and retries the next one — so one throttled identity no longer stalls the whole model list. Each account has its own single-flight refresh mutex, and rotations are mirrored back to the CLI credential file. The dashboard lists every account with its state (active / cooling down / disabled), a per-account toggle, and a remove action.
+* **OmniRush Token Refresh:** `/device/refresh` is called on the host root, not on the API base (`gateway_url` ships as `https://omnirush.ai/omnirush/v1`, and `/v1/device/refresh` answers `401 device_token_required`, which reads like an expired token). Rotation is single-flight — concurrent 401s reuse the pair the first caller obtained because a refresh token is spend-once — and the rotated pair is written back to the file it was read from, so a co-installed OmniRush CLI never keeps a spent token. `409 refresh_token_already_used` adopts the peer's stored pair instead of demanding a new sign-in.
+* **Settings Panel:** the gear in the dashboard header opens a sheet for egress and request behaviour — OpenCode proxy + pool, datacenter fallback, OmniRush proxy, CLI identity (user agent, client/project headers, pinned decoy session, sidecar URL), header timeout, retries, strip/keep fields and verbose logging. Values persist to `~/.cli-proxy-api/cpa-freetier-settings.json` (`0600`, override with `CPA_FREETIER_SETTINGS`) and take precedence over the matching environment variables, so nothing needs a restart. Every proxy field has a live **Test** button that reports TCP latency plus the HTTP status seen through it, and `-` disables a field explicitly.
+* **Dashboard Mutation Token:** the host serves `/v0/resource/plugins/<id>/*` without the Management key, and every dashboard action is a GET, so the page is served with a per-process random token (`__CPA_FREETIER_TOKEN__` placeholder replaced at serve time) that `start`, `import`, `disconnect` and `models/toggle` must echo in `X-Cpa-Freetier-Token`. Without it those calls answer `403` and change nothing, which also blocks cross-site `<img src="…">` triggers.
 
 ---
 

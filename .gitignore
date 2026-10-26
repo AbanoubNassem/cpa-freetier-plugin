@@ -3,3 +3,5 @@ build/
 *.so
 *.zip
 *.h
+# local go build artifact (go build .)
+/cpa-freetier-plugin

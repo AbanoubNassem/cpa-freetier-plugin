@@ -1,0 +1,2900 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="cpa-freetier-token" content="__CPA_FREETIER_TOKEN__">
+  <title>Free Tier Plugin</title>
+  <script>
+    /* Runs before first paint: when this page is framed by the Management
+       Center it adopts the host palette immediately, so there is no dark flash
+       before the DOM is ready. Same-origin access only; standalone pages fall
+       through to the saved/local preference. */
+    (function () {
+      var embedded = false;
+      try { embedded = window.parent !== window && !!window.frameElement; } catch (e) { embedded = false; }
+      if (!embedded) return;
+
+      var doc = window.parent.document;
+      var root = doc.documentElement;
+      var cs = getComputedStyle(root);
+      var attr = root.getAttribute('data-theme');
+      var map = {
+        '--bg-page': '--bg-secondary',
+        '--bg-surface': '--bg-primary',
+        '--bg-elevated': '--bg-tertiary',
+        '--bg-subtle': '--bg-quinary',
+        '--bg-hover': '--bg-hover',
+        '--border-subtle': '--border-color',
+        '--border-strong': '--border-primary',
+        '--text-primary': '--text-primary',
+        '--text-secondary': '--text-secondary',
+        '--text-muted': '--text-tertiary',
+        '--action-bg': '--text-primary',
+        '--action-fg': '--bg-primary',
+        '--status-ok': '--success-color',
+        '--status-err': '--error-color',
+        '--status-warn': '--quota-medium-color'
+      };
+      var style = document.documentElement.style;
+      var bg = '';
+      for (var mine in map) {
+        if (!Object.prototype.hasOwnProperty.call(map, mine)) continue;
+        var value = (cs.getPropertyValue(map[mine]) || '').trim();
+        if (!value) continue;
+        style.setProperty(mine, value);
+        if (map[mine] === '--bg-secondary') bg = value;
+      }
+
+      var dark = attr === 'dark';
+      if (attr !== 'dark' && attr !== 'white' && attr !== 'light') {
+        var lum = null;
+        var rgb = bg.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+        if (rgb) {
+          lum = 0.299 * +rgb[1] + 0.587 * +rgb[2] + 0.114 * +rgb[3];
+        } else {
+          var hx = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+          if (hx) {
+            var hex = hx[1].length === 3 ? hx[1].replace(/./g, '$&$&') : hx[1];
+            lum = 0.299 * parseInt(hex.slice(0, 2), 16) + 0.587 * parseInt(hex.slice(2, 4), 16) + 0.114 * parseInt(hex.slice(4, 6), 16);
+          }
+        }
+        dark = lum !== null ? lum < 128 : false;
+      }
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.documentElement.classList.add('is-embedded-early');
+    })();
+  </script>
+  <style>
+    :root,
+    [data-theme="dark"] {
+      --bg-page: #121110;
+      --bg-surface: #1a1917;
+      --bg-elevated: #22201d;
+      --bg-subtle: #161513;
+      --bg-hover: #282521;
+      --border-subtle: #2a2723;
+      --border-strong: #3a3630;
+      --text-primary: #f4f2ee;
+      --text-secondary: #b5b0a8;
+      --text-muted: #7e7970;
+      --action-bg: #f4f2ee;
+      --action-fg: #121110;
+      --action-hover: #dfdcd5;
+      --status-ok: #10b981;
+      --status-ok-bg: rgba(16, 185, 129, 0.12);
+      --status-ok-border: rgba(16, 185, 129, 0.28);
+      --status-warn: #d97706;
+      --status-warn-bg: rgba(217, 119, 6, 0.12);
+      --status-warn-border: rgba(217, 119, 6, 0.28);
+      --status-err: #e05246;
+      --status-err-bg: rgba(224, 82, 70, 0.12);
+      --status-err-border: rgba(224, 82, 70, 0.3);
+      --switch-off: #33302b;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-toast: 0 10px 28px rgba(0, 0, 0, 0.55);
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 10px;
+    }
+
+    [data-theme="light"],
+    [data-theme="white"] {
+      --bg-page: #f5f3ee;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f9f8f5;
+      --bg-subtle: #efede7;
+      --bg-hover: #f2f0ea;
+      --border-subtle: #e4e1da;
+      --border-strong: #d0ccc3;
+      --text-primary: #1f1d1a;
+      --text-secondary: #5c5852;
+      --text-muted: #8c867e;
+      --action-bg: #1f1d1a;
+      --action-fg: #ffffff;
+      --action-hover: #36332e;
+      --status-ok: #059669;
+      --status-ok-bg: rgba(5, 150, 105, 0.09);
+      --status-ok-border: rgba(5, 150, 105, 0.25);
+      --status-warn: #b45309;
+      --status-warn-bg: rgba(180, 83, 9, 0.09);
+      --status-warn-border: rgba(180, 83, 9, 0.25);
+      --status-err: #c64333;
+      --status-err-bg: rgba(198, 67, 51, 0.09);
+      --status-err-border: rgba(198, 67, 51, 0.25);
+      --switch-off: #d4d0c8;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --shadow-toast: 0 10px 26px rgba(0, 0, 0, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .shell {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 16px 14px 80px;
+      /* When embedded the Management Center paints its floating controls over
+         the top of the frame; --chrome-offset clears them. */
+      padding-top: calc(16px + var(--chrome-offset, 0px));
+    }
+
+    /* Embedded: the host already offers refresh and theme, so this page drops
+       its own copies instead of stacking a second toolbar underneath. */
+    .inline-chrome {
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .version-inline {
+      display: none;
+      color: var(--text-muted);
+    }
+
+    body.is-embedded .topbar-actions {
+      display: none;
+    }
+
+    body.is-embedded .inline-chrome {
+      display: inline-flex;
+    }
+
+    body.is-embedded .version-inline {
+      display: inline;
+    }
+
+    @media (min-width: 640px) {
+      .shell {
+        padding: 24px 24px 64px;
+        padding-top: calc(24px + var(--chrome-offset, 0px));
+      }
+    }
+
+    /* Top Header */
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 16px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    /* A two-line subtitle is taller than the icon cluster; centre the actions
+       against it on phones instead of pinning them to the ceiling. */
+    @media (max-width: 519px) {
+      .topbar {
+        align-items: center;
+      }
+    }
+
+    .title-group h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--text-primary);
+    }
+
+    .title-group p {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 34px;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      line-height: 1;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-primary);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background-color 0.14s ease, border-color 0.14s ease, opacity 0.14s ease, transform 0.1s ease;
+      user-select: none;
+    }
+
+    .btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--action-bg);
+      color: var(--action-fg);
+      font-weight: 600;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--action-hover);
+    }
+
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--bg-hover);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+
+    .btn-danger {
+      background: var(--status-err-bg);
+      border-color: var(--status-err-border);
+      color: var(--status-err);
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(224, 82, 70, 0.2);
+    }
+
+    .btn-sm {
+      min-height: 28px;
+      padding: 4px 9px;
+      font-size: 0.75rem;
+    }
+
+    /* On phones the row is dense: the test button keeps its icon and drops the
+       label, which keeps the touch target square and the row readable. */
+    @media (max-width: 519px) {
+      .model-right .btn-sm {
+        padding: 0;
+        min-height: 32px;
+        width: 32px;
+      }
+
+      .model-right .btn-label {
+        display: none;
+      }
+    }
+
+    .btn-icon {
+      padding: 6px;
+      width: 34px;
+    }
+
+    /* Status Badges */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 500;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .status-pill.ok {
+      background: var(--status-ok-bg);
+      border-color: var(--status-ok-border);
+      color: var(--status-ok);
+    }
+
+    .status-pill.warn {
+      background: var(--status-warn-bg);
+      border-color: var(--status-warn-border);
+      color: var(--status-warn);
+    }
+
+    .status-pill.err {
+      background: var(--status-err-bg);
+      border-color: var(--status-err-border);
+      color: var(--status-err);
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    /* Top Control Grid (OmniRush + Telemetry) */
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    @media (min-width: 768px) {
+      .control-grid {
+        grid-template-columns: 1.35fr 1fr;
+        gap: 14px;
+      }
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .panel-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* OmniRush Account Block */
+    .account-summary {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    @media (min-width: 520px) {
+      .account-summary {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
+    .account-meta {
+      min-width: 0;
+    }
+
+    .account-primary {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-secondary {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+      word-break: break-all;
+    }
+
+    .account-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 519px) {
+      .account-actions .btn {
+        flex: 1 1 auto;
+      }
+    }
+
+    /* Device Authorization Drawer */
+    .drawer {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin-top: 4px;
+      display: none;
+    }
+
+    .drawer.open {
+      display: block;
+    }
+
+    .code-box-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin: 10px 0;
+    }
+
+    .user-code {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--text-primary);
+      user-select: all;
+    }
+
+    .drawer-steps {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .drawer-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 519px) {
+      .drawer-footer .btn {
+        width: 100%;
+      }
+    }
+
+    /* Manual Token Import Form */
+    .import-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .text-input,
+    .textarea-input {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 8px 10px;
+      font-size: 0.8125rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .text-input:focus,
+    .textarea-input:focus {
+      border-color: var(--text-primary);
+    }
+
+    .textarea-input {
+      min-height: 68px;
+      resize: vertical;
+    }
+
+    /* Telemetry Strip */
+    .telemetry-list {
+      display: grid;
+      /* Three fixed cells: auto-fit drops to two columns on narrow phones and
+         leaves the third metric stranded on its own row. */
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .telemetry-cell {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 9px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .telemetry-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .telemetry-val {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    /* Fleet Section */
+    .fleet-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: visible;
+    }
+
+    /* The OmniRush account block lives inside the fleet card (its own tab), so
+       it renders flat: a separator instead of a second nested card border. */
+    #omniAccountPanel.panel {
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--border-subtle);
+      border-radius: 0;
+      box-shadow: none;
+      padding: 14px 14px 13px;
+      gap: 10px;
+    }
+
+    #omniAccountPanel[hidden] {
+      display: none;
+    }
+
+    @media (min-width: 768px) {
+      #omniAccountPanel.panel {
+        padding: 16px;
+      }
+    }
+
+    /* With the account card gone the network panel is the only one up top. */
+    .control-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sticky-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      border-top-left-radius: var(--radius-lg);
+      border-top-right-radius: var(--radius-lg);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    @media (min-width: 768px) {
+      .sticky-toolbar {
+        padding: 14px 16px;
+      }
+    }
+
+    .toolbar-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Provider filter: one 4-up segmented control on phones, pills from tablet
+       up. A clipped scroll strip hides a tab, which reads as a broken layout. */
+    .tabs-scroll {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-subtle);
+      overflow: hidden;
+      max-width: 100%;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 7px 4px;
+      border: none;
+      border-radius: 0;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: transparent;
+      cursor: pointer;
+      transition: background-color 0.14s ease, color 0.14s ease;
+      min-width: 0;
+    }
+
+    .tab-btn + .tab-btn {
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .tab-btn.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1px var(--border-strong);
+      border-radius: var(--radius-sm);
+    }
+
+    .tab-label {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (min-width: 768px) {
+      .tabs-scroll {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border: none;
+        background: transparent;
+        overflow: visible;
+        border-radius: 0;
+      }
+
+      .tab-btn {
+        flex-direction: row;
+        gap: 8px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        padding: 6px 11px;
+        font-size: 0.8125rem;
+      }
+
+      .tab-btn + .tab-btn {
+        border-left: 1px solid transparent;
+      }
+
+      .tab-btn.active {
+        background: var(--bg-elevated);
+        border-color: var(--border-strong);
+        box-shadow: none;
+      }
+    }
+
+    .tab-count {
+      font-size: 0.7rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+    }
+
+    .tab-btn.active .tab-count {
+      color: var(--text-secondary);
+    }
+
+    .toolbar-row-bottom {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 34px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 0 30px 0 32px;
+      font-size: 0.8125rem;
+      outline: none;
+      transition: border-color 0.14s ease, background-color 0.14s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--border-strong);
+      background: var(--bg-surface);
+    }
+
+    .search-clear {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: none;
+      line-height: 1;
+    }
+
+    @media (max-width: 767px) {
+      .toolbar-row-top {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+
+    /* One control for "everything in this view": a count plus a switch, which is
+       clearer than two competing bulk buttons. */
+    .list-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .list-count {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .bulk-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .bulk-toggle-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .switch-sm {
+      width: 34px;
+      height: 20px;
+    }
+
+    .switch-sm .slider::before {
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+    }
+
+    .switch-sm input:checked + .slider::before {
+      transform: translateX(14px);
+    }
+
+    /* Model Rows */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .model-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background-color 0.12s ease;
+    }
+
+    @media (min-width: 640px) {
+      .model-item {
+        padding: 12px 16px;
+      }
+    }
+
+    .model-item:last-child {
+      border-bottom: none;
+    }
+
+    .model-item:hover {
+      background: var(--bg-elevated);
+    }
+
+    .model-item.disabled-row {
+      opacity: 0.62;
+    }
+
+    .model-main {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .model-left {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .model-title-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .model-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Badges live on their own row so every model item keeps the same height,
+       whatever the length of its name. */
+    .model-tag-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .badge-tag {
+      font-size: 0.6875rem;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+
+    .badge-tag.reasoning {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .badge-tag.quarantined {
+      background: var(--status-err-bg);
+      border-color: var(--status-err-border);
+      color: var(--status-err);
+    }
+
+    .model-sub-row {
+      display: flex;
+      align-items: center;
+      gap: 8px 10px;
+      flex-wrap: nowrap;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      min-width: 0;
+    }
+
+    /* Ctx and Out travel together: wrapping them as one unit keeps the row tidy. */
+    .model-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      color: var(--text-muted);
+    }
+
+    .id-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      cursor: pointer;
+      min-width: 0;
+      flex: 0 1 auto;
+      transition: border-color 0.14s ease, color 0.14s ease;
+    }
+
+    /* Long upstream ids truncate instead of wrapping, so every row is one height. */
+    .id-chip span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .id-chip:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .id-chip.copied {
+      border-color: var(--status-ok-border);
+      color: var(--status-ok);
+      background: var(--status-ok-bg);
+    }
+
+    .model-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+
+    /* Probe Result Strip inside Model Item */
+    .probe-output {
+      display: none;
+      font-size: 0.75rem;
+      padding: 7px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      word-break: break-word;
+    }
+
+    .probe-output.show {
+      display: flex;
+    }
+
+    .probe-output.ok {
+      border-color: var(--status-ok-border);
+      background: var(--status-ok-bg);
+      color: var(--text-primary);
+    }
+
+    .probe-output.err {
+      border-color: var(--status-err-border);
+      background: var(--status-err-bg);
+      color: var(--status-err);
+    }
+
+    /* Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 42px;
+      height: 24px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      inset: 0;
+      background-color: var(--switch-off);
+      border-radius: 999px;
+      transition: background-color 0.18s ease;
+    }
+
+    .slider::before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    }
+
+    .switch input:checked + .slider {
+      background-color: var(--status-ok);
+    }
+
+    .switch input:checked + .slider::before {
+      transform: translateX(18px);
+    }
+
+    .switch input:focus-visible + .slider {
+      outline: 2px solid var(--text-primary);
+      outline-offset: 2px;
+    }
+
+    /* ── Settings sheet ──────────────────────────────────────────────────── */
+    /* OmniRush account pool: one row per signed-in identity. */
+    .account-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+    }
+
+    .account-row.is-off {
+      opacity: 0.62;
+    }
+
+    .account-row-main {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .account-row-email {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-row-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 0;
+    }
+
+    .account-row-meta .meta-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .account-dot.ok { background: var(--status-ok); }
+    .account-dot.warn { background: var(--status-warn); }
+    .account-dot.err { background: var(--status-err); }
+
+    .account-row-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn.danger {
+      color: var(--status-err);
+    }
+
+    .icon-btn.danger:hover {
+      background: color-mix(in srgb, var(--status-err) 14%, transparent);
+    }
+
+    /* Sign-up entry point: deliberately low-key, no invite copy or URL shown. */
+    .referral-btn {
+      margin-right: auto;
+      color: var(--text-muted);
+      font-weight: 500;
+      padding-left: 2px;
+      padding-right: 2px;
+    }
+
+    .referral-btn:hover {
+      color: var(--text-secondary);
+    }
+
+    .account-empty {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 4px 2px;
+    }
+
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.16s ease;
+      z-index: 60;
+    }
+
+    .sheet-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 61;
+      display: flex;
+      flex-direction: column;
+      max-height: 88vh;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-strong);
+      border-radius: 16px 16px 0 0;
+      transform: translateY(101%);
+      transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, visibility 0.2s ease;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    .sheet.open {
+      transform: translateY(0);
+      pointer-events: auto;
+      visibility: visible;
+    }
+
+    @media (min-width: 768px) {
+      .sheet {
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        top: 50%;
+        width: min(660px, 92vw);
+        max-height: 84vh;
+        border: 1px solid var(--border-strong);
+        border-radius: 14px;
+        transform: translate(-50%, -46%);
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+        transition: transform 0.2s ease, opacity 0.2s ease, visibility 0.2s ease;
+      }
+
+      .sheet.open {
+        transform: translate(-50%, -50%);
+        opacity: 1;
+        pointer-events: auto;
+        visibility: visible;
+      }
+    }
+
+    .sheet-grip {
+      width: 36px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--border-strong);
+      margin: 8px auto 0;
+      flex-shrink: 0;
+    }
+
+    @media (min-width: 768px) {
+      .sheet-grip {
+        display: none;
+      }
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .sheet-title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sheet-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 14px 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .sheet-foot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      flex-shrink: 0;
+    }
+
+    .sheet-foot .btn-primary {
+      flex: 1;
+    }
+
+    .sheet-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sheet-section-head {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .field-inline {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .field-inline .field-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .field-hint {
+      font-size: 0.6875rem;
+      line-height: 1.45;
+      color: var(--text-muted);
+    }
+
+    .field-hint code,
+    .field-hint .mono {
+      color: var(--text-secondary);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .input-row .text-input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .input-row .btn {
+      padding: 0 13px;
+      min-height: 34px;
+      flex-shrink: 0;
+    }
+
+    .test-note {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+      min-height: 1em;
+    }
+
+    .test-note.ok {
+      color: var(--status-ok);
+    }
+
+    .test-note.err {
+      color: var(--status-err);
+    }
+
+    .effective-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .effective-chip {
+      font-size: 0.6875rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Empty & Skeleton States */
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    /* Floating Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translate(-50%, 16px);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-toast);
+      padding: 9px 14px;
+      border-radius: 999px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      max-width: calc(100vw - 32px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    svg.icon {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      flex-shrink: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="title-group">
+      <h1>Free Tier Plugin</h1>
+      <p>Manage free models, provider connections, and account access <span class="version-inline mono" id="versionInline"></span></p>
+    </div>
+    <div class="topbar-actions">
+      <span class="status-pill mono" id="versionBadge">v1.4.0</span>
+      <button type="button" class="btn btn-ghost btn-icon" id="settingsBtn" onclick="openSettings()" title="Settings" aria-label="Settings">
+        <svg class="icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+        </svg>
+      </button>
+      <button type="button" class="btn btn-ghost btn-icon" id="themeToggleBtn" onclick="cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
+        <svg class="icon" id="themeIcon" viewBox="0 0 24 24">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+      </button>
+      <button type="button" class="btn btn-ghost btn-icon" onclick="fetchStatus(true)" title="Reload status" aria-label="Reload status">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+          <path d="M16 16h5v5"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="control-grid">
+    <!-- Panel 2: Network & Gateway Telemetry -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Network &amp; routing</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnPingTest" onclick="runNetworkPing()">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Check latency
+        </button>
+      </div>
+      <div class="telemetry-list">
+        <div class="telemetry-cell">
+          <span class="telemetry-label">Sidecar :8789</span>
+          <span class="telemetry-val mono" id="teleSidecar">--</span>
+        </div>
+        <div class="telemetry-cell">
+          <span class="telemetry-label">Proxy :8127</span>
+          <span class="telemetry-val mono" id="teleProxy">--</span>
+        </div>
+        <div class="telemetry-cell">
+          <span class="telemetry-label">Active models</span>
+          <span class="telemetry-val mono" id="teleActiveModels">-- / --</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Model Fleet List -->
+  <section class="fleet-panel">
+    <!-- OmniRush account, shown only inside its own tab -->
+    <div class="panel" id="omniAccountPanel" hidden>
+      <div class="panel-head">
+        <div class="panel-title">
+          <span>OmniRush account</span>
+        </div>
+        <span id="omniStatusPill" class="status-pill"><span class="dot"></span> Checking…</span>
+      </div>
+
+      <div class="account-summary">
+        <div class="account-meta">
+          <div class="account-primary" id="omniEmailText">Not connected</div>
+          <div class="account-secondary mono" id="omniPathText">One sign-in unlocks the OmniRush models; add more accounts to spread the free-tier queue.</div>
+        </div>
+        <div class="account-actions" id="omniActionGroup">
+          <button type="button" class="btn btn-primary" id="btnConnectOmni" onclick="startOmniAuth()">Add account</button>
+          <button type="button" class="btn btn-ghost" id="btnShowImport" onclick="toggleImportDrawer()">Import token</button>
+          <button type="button" class="btn btn-danger" id="btnDisconnectOmni" style="display:none;" onclick="requestDisconnectOmni()">Sign out all</button>
+          <button type="button" class="btn btn-danger" id="btnConfirmDisconnect" style="display:none;" onclick="confirmDisconnectOmni()">Yes, remove every account</button>
+          <button type="button" class="btn btn-ghost" id="btnCancelDisconnect" style="display:none;" onclick="cancelDisconnectOmni()">Cancel</button>
+        </div>
+      </div>
+
+      <div class="account-list" id="omniAccountList"></div>
+
+      <!-- Device Code Drawer -->
+      <div class="drawer" id="deviceFlowDrawer">
+        <div class="drawer-steps">Copy this code, then approve access on the OmniRush console:</div>
+        <div class="code-box-row">
+          <span class="user-code mono" id="userCodeText">----</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyUserCode()">
+            <svg class="icon" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            Copy code
+          </button>
+        </div>
+        <div class="drawer-footer">
+          <span class="status-pill warn" id="pollStatusText"><span class="dot"></span> Waiting for approval in the browser…</span>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; width:100%; justify-content:flex-end;">
+            <a href="#" target="_blank" rel="noopener noreferrer" id="btnOpenAuthorize" class="btn btn-primary" onclick="copyUserCodeSilent()">
+              Open OmniRush console
+              <svg class="icon" viewBox="0 0 24 24"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+            </a>
+            <a href="#" target="_blank" rel="noopener noreferrer" id="btnReferral" class="btn btn-ghost btn-sm referral-btn" style="display:none;">Register Now</a>
+            <button type="button" class="btn btn-ghost" onclick="cancelOmniAuth()">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Token / JSON Import Drawer -->
+      <div class="drawer" id="importDrawer">
+        <div class="import-form">
+          <label class="field-label" for="importJsonInput">Paste the contents of <span class="mono">auth.json</span> or an OmniRush refresh token:</label>
+          <textarea id="importJsonInput" class="textarea-input mono" placeholder='{"accessToken":"...","refreshToken":"..."} or refresh_token'></textarea>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleImportDrawer()">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnSubmitImport" onclick="submitTokenImport()">Save credentials</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="sticky-toolbar">
+      <div class="toolbar-row-top">
+        <div class="tabs-scroll" role="tablist">
+          <button type="button" class="tab-btn active" onclick="setFilter('all', this)">
+            <span class="tab-label">All</span>
+            <span class="tab-count mono" id="countAll">0</span>
+          </button>
+          <button type="button" class="tab-btn" onclick="setFilter('opencode', this)">
+            <span class="tab-label">OpenCode</span>
+            <span class="tab-count mono" id="countOpenCode">0</span>
+          </button>
+          <button type="button" class="tab-btn" onclick="setFilter('kilo', this)">
+            <span class="tab-label">Kilo AI</span>
+            <span class="tab-count mono" id="countKilo">0</span>
+          </button>
+          <button type="button" class="tab-btn" onclick="setFilter('omnirush', this)">
+            <span class="tab-label">OmniRush</span>
+            <span class="tab-count mono" id="countOmni">0</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-row-bottom">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+          </svg>
+          <input type="search" class="search-input" id="searchBox" placeholder="Search models or IDs…" oninput="onSearchInput()">
+          <button type="button" class="search-clear" id="searchClearBtn" onclick="clearSearch()" aria-label="Clear search">&#x2715;</button>
+        </div>
+      </div>
+
+      <div class="list-summary">
+        <span class="list-count mono" id="visibleCount">—</span>
+        <span class="inline-chrome">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="openSettings()" title="Settings" aria-label="Settings">
+            <svg class="icon" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+            </svg>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="fetchStatus(true)" title="Reload status" aria-label="Reload status">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+              <path d="M16 16h5v5"></path>
+            </svg>
+          </button>
+        </span>
+        <label class="bulk-toggle" for="bulkSwitch">
+          <span class="bulk-toggle-label">Enable all in this tab</span>
+          <span class="switch switch-sm">
+            <input type="checkbox" id="bulkSwitch" onchange="onBulkSwitch(this)">
+            <span class="slider"></span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <div class="model-list" id="modelListContainer">
+      <div class="empty-state">Loading models…</div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toastBar" role="status" aria-live="polite"></div>
+
+<script>
+  let allModels = [];
+  let currentFilter = 'all';
+  let pollInterval = null;
+  let toastTimer = null;
+  let probeStates = {};
+
+  /* Token injected into this page at serve time: the resource routes are served
+     without the Management key, so mutating calls must prove they came from the
+     page the operator loaded (this also blocks cross-site GET requests). */
+  const PAGE_TOKEN = (document.querySelector('meta[name="cpa-freetier-token"]') || {}).content || '';
+
+  function mutate(url, options) {
+    const opts = Object.assign({}, options || {});
+    opts.headers = Object.assign({}, opts.headers || {}, { 'X-Cpa-Freetier-Token': PAGE_TOKEN });
+    return fetch(url, opts);
+  }
+
+  /* ── Host integration ──────────────────────────────────────────────────
+     The plugin page is rendered inside the Management Center's iframe. Rather
+     than running its own palette, it mirrors the host's resolved tokens so the
+     two surfaces cannot drift apart: switching the Management Center to light or
+     dark repaints this page immediately. */
+  const EMBEDDED = (() => {
+    try { return window.parent !== window && !!window.frameElement; } catch (_) { return false; }
+  })();
+
+  const HOST_TOKENS = {
+    '--bg-page': '--bg-secondary',
+    '--bg-surface': '--bg-primary',
+    '--bg-elevated': '--bg-tertiary',
+    '--bg-subtle': '--bg-quinary',
+    '--bg-hover': '--bg-hover',
+    '--border-subtle': '--border-color',
+    '--border-strong': '--border-primary',
+    '--text-primary': '--text-primary',
+    '--text-secondary': '--text-secondary',
+    '--text-muted': '--text-tertiary',
+    '--action-bg': '--text-primary',
+    '--action-fg': '--bg-primary',
+    '--status-ok': '--success-color',
+    '--status-err': '--error-color',
+    '--status-warn': '--quota-medium-color',
+  };
+
+  function luminance(color) {
+    if (!color) return null;
+    const value = color.trim();
+    let r, g, b;
+    const rgb = value.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+    if (rgb) {
+      r = +rgb[1]; g = +rgb[2]; b = +rgb[3];
+    } else {
+      const hx = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (!hx) return null;
+      let hex = hx[1];
+      if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+    }
+    // Perceived brightness; 128 is the usual split between light and dark UI.
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+
+  function hostStyle() {
+    try { return getComputedStyle(window.parent.document.documentElement); } catch (_) { return null; }
+  }
+
+  function hostTheme() {
+    const cs = hostStyle();
+    if (!cs) return null;
+    const read = (name) => (cs.getPropertyValue(name) || '').trim();
+    const attr = window.parent.document.documentElement.getAttribute('data-theme');
+    if (attr === 'dark') return 'dark';
+    if (attr === 'white' || attr === 'light') return 'light';
+    // "auto" leaves the attribute off entirely, so decide from the surface it
+    // actually painted.
+    const bg = read('--bg-secondary') || (window.parent.document.body ? getComputedStyle(window.parent.document.body).backgroundColor : '');
+    const lum = luminance(bg);
+    if (lum !== null) return lum < 128 ? 'dark' : 'light';
+    return 'light';
+  }
+
+  function applyHostTokens() {
+    const cs = hostStyle();
+    if (!cs) return false;
+    const root = document.documentElement.style;
+    let applied = 0;
+    Object.entries(HOST_TOKENS).forEach(([mine, theirs]) => {
+      const value = (cs.getPropertyValue(theirs) || '').trim();
+      if (!value) return;
+      root.setProperty(mine, value);
+      applied += 1;
+    });
+    return applied > 0;
+  }
+
+  /* Clear the host's floating control cluster so it never covers this header. */
+  function applyChromeOffset() {
+    if (!EMBEDDED) return;
+    try {
+      const frame = window.frameElement;
+      const hostDoc = window.parent.document;
+      if (!frame) return;
+      const cluster = hostDoc.querySelector('[class*="header-actions"]');
+      if (!cluster) return;
+      const c = cluster.getBoundingClientRect();
+      const f = frame.getBoundingClientRect();
+      const overlap = Math.ceil(c.bottom - f.top);
+      if (overlap > 0) {
+        document.documentElement.style.setProperty('--chrome-offset', (overlap + 8) + 'px');
+      }
+    } catch (_) {}
+  }
+
+  function syncHost() {
+    if (!EMBEDDED) return false;
+    const theme = hostTheme();
+    if (!theme) return false;
+    applyHostTokens();
+    document.documentElement.setAttribute('data-theme', theme);
+    applyChromeOffset();
+    return true;
+  }
+
+  function seedInlineVersion() {
+    const badge = document.getElementById('versionBadge');
+    const inline = document.getElementById('versionInline');
+    if (badge && inline && !inline.textContent.trim()) {
+      inline.textContent = '· ' + badge.textContent.trim();
+    }
+  }
+
+  function watchHost() {
+    if (!EMBEDDED) return;
+    document.body.classList.add('is-embedded');
+    seedInlineVersion();
+    syncHost();
+
+    try {
+      const hostDoc = window.parent.document;
+      const observer = new MutationObserver(syncHost);
+      observer.observe(hostDoc.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+      if (hostDoc.body) {
+        observer.observe(hostDoc.body, { attributes: true, attributeFilter: ['class', 'style'] });
+      }
+      // Follow the OS when the host is in "auto": the attribute never changes then.
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncHost);
+      }
+      window.addEventListener('resize', applyChromeOffset);
+    } catch (_) {}
+  }
+
+  function initTheme() {
+    if (EMBEDDED) {
+      watchHost();
+      return;
+    }
+    const saved = localStorage.getItem('cpa-freetier-theme');
+    if (saved) {
+      applyTheme(saved, false);
+      return;
+    }
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(prefersDark ? 'dark' : 'light', false);
+  }
+
+  function applyTheme(theme, persist) {
+    const normalized = (theme === 'white' || theme === 'light') ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', normalized);
+    if (persist) {
+      try { localStorage.setItem('cpa-freetier-theme', normalized); } catch (_) {}
+    }
+  }
+
+  function cycleTheme() {
+    if (EMBEDDED) {
+      // The theme belongs to the Management Center while embedded.
+      showToast('Use the theme switch in the Management Center');
+      return;
+    }
+    const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    applyTheme(next, true);
+    showToast(next === 'dark' ? 'Dark theme on' : 'Light theme on');
+  }
+
+  function showToast(msg) {
+    const el = document.getElementById('toastBar');
+    el.textContent = msg;
+    el.classList.add('visible');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.classList.remove('visible');
+    }, 2600);
+  }
+
+  function formatTokens(n) {
+    if (!n) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1) + 'M';
+    return Math.round(n / 1000) + 'K';
+  }
+
+  async function fetchStatus(manualRefresh = false) {
+    try {
+      const res = await fetch('api/status');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      allModels = data.models || [];
+
+      if (data.version) {
+        const label = 'v' + String(data.version).replace(/^v/, '').split('-')[0];
+        document.getElementById('versionBadge').textContent = label;
+        const inline = document.getElementById('versionInline');
+        if (inline) inline.textContent = '· ' + label;
+      }
+
+      /* OmniRush state */
+      const pill = document.getElementById('omniStatusPill');
+      const emailEl = document.getElementById('omniEmailText');
+      const pathEl = document.getElementById('omniPathText');
+      const btnConnect = document.getElementById('btnConnectOmni');
+      const btnImport = document.getElementById('btnShowImport');
+      const btnDisc = document.getElementById('btnDisconnectOmni');
+
+      cancelDisconnectOmni();
+
+      const accounts = (data.omnirush && Array.isArray(data.omnirush.accounts)) ? data.omnirush.accounts : [];
+      renderOmniAccounts(accounts);
+
+      if (accounts.length) {
+        const usable = accounts.filter(a => a.enabled && a.status !== 'cooldown' && a.status !== 'error').length;
+        const label = accounts.length === 1 ? '1 account' : accounts.length + ' accounts';
+        pill.className = usable ? 'status-pill ok' : 'status-pill warn';
+        pill.innerHTML = `<span class="dot"></span> ${label}`;
+        emailEl.textContent = accounts.length === 1
+          ? (accounts[0].email || 'OmniRush device session active')
+          : `${usable}/${accounts.length} in rotation`;
+        pathEl.textContent = (data.omnirush && data.omnirush.pool_path) || '~/.cli-proxy-api/omnirush-accounts.json';
+        btnConnect.style.display = 'inline-flex';
+        btnImport.style.display = 'inline-flex';
+        btnDisc.style.display = 'inline-flex';
+        document.getElementById('deviceFlowDrawer').classList.remove('open');
+        document.getElementById('importDrawer').classList.remove('open');
+      } else {
+        pill.className = 'status-pill warn';
+        pill.innerHTML = '<span class="dot"></span> Not connected';
+        emailEl.textContent = 'No account linked';
+        pathEl.textContent = 'Link a device or import a token to unlock the OmniRush models';
+        btnConnect.style.display = 'inline-flex';
+        btnImport.style.display = 'inline-flex';
+        btnDisc.style.display = 'none';
+      }
+
+      /* Telemetry */
+      const scEl = document.getElementById('teleSidecar');
+      if (data.sidecar && data.sidecar.zen_active) {
+        const ms = data.sidecar.latency_ms && data.sidecar.latency_ms !== 'down' ? data.sidecar.latency_ms + ' ms' : 'Up';
+        scEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${ms}`;
+      } else {
+        scEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
+      }
+
+      const pxEl = document.getElementById('teleProxy');
+      if (data.proxy_pool && data.proxy_pool.reachable) {
+        const ms = data.proxy_pool.latency_ms && data.proxy_pool.latency_ms !== 'down' ? data.proxy_pool.latency_ms + ' ms' : 'Up';
+        pxEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${ms}`;
+      } else if (data.proxy_pool && data.proxy_pool.configured) {
+        pxEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Standby`;
+      } else {
+        pxEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Off`;
+      }
+
+      updateCounts();
+      renderModels();
+      if (manualRefresh) showToast('Status refreshed');
+    } catch (e) {
+      showToast('Could not load status: ' + e.message);
+    }
+  }
+
+  function updateCounts() {
+    const enabledCount = allModels.filter(m => m.enabled).length;
+    document.getElementById('teleActiveModels').textContent = `${enabledCount} / ${allModels.length}`;
+
+    const fmtTab = (arr) => {
+      const on = arr.filter(m => m.enabled).length;
+      return `${on}/${arr.length}`;
+    };
+
+    document.getElementById('countAll').textContent = fmtTab(allModels);
+    document.getElementById('countOpenCode').textContent = fmtTab(allModels.filter(m => m.provider === 'opencode'));
+    document.getElementById('countKilo').textContent = fmtTab(allModels.filter(m => m.provider === 'kilo'));
+    document.getElementById('countOmni').textContent = fmtTab(allModels.filter(m => m.provider === 'omnirush'));
+  }
+
+  function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    syncAccountPanel();
+    renderModels();
+  }
+
+  /* The OmniRush account block only matters next to its own models. */
+  function syncAccountPanel() {
+    const panel = document.getElementById('omniAccountPanel');
+    if (!panel) return;
+    panel.hidden = currentFilter !== 'omnirush';
+  }
+
+  function onSearchInput() {
+    const val = document.getElementById('searchBox').value;
+    document.getElementById('searchClearBtn').style.display = val ? 'block' : 'none';
+    renderModels();
+  }
+
+  function clearSearch() {
+    const box = document.getElementById('searchBox');
+    box.value = '';
+    document.getElementById('searchClearBtn').style.display = 'none';
+    renderModels();
+    box.focus();
+  }
+
+  function getFilteredModels() {
+    const q = document.getElementById('searchBox').value.toLowerCase().trim();
+    return allModels.filter(m => {
+      if (currentFilter !== 'all' && m.provider !== currentFilter) return false;
+      if (q && !m.id.toLowerCase().includes(q) && !m.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function updateListSummary(filtered) {
+    const countEl = document.getElementById('visibleCount');
+    const switchEl = document.getElementById('bulkSwitch');
+    const on = filtered.filter(m => m.enabled).length;
+
+    if (countEl) countEl.textContent = `${on}/${filtered.length} models enabled`;
+    if (switchEl) {
+      switchEl.checked = filtered.length > 0 && on === filtered.length;
+      switchEl.indeterminate = on > 0 && on < filtered.length;
+      switchEl.disabled = filtered.length === 0;
+    }
+  }
+
+  function renderModels() {
+    const container = document.getElementById('modelListContainer');
+    const filtered = getFilteredModels();
+    updateListSummary(filtered);
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state">No models match this filter.</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    filtered.forEach(m => {
+      const item = document.createElement('div');
+      item.className = 'model-item' + (m.enabled ? '' : ' disabled-row');
+      item.id = 'row-' + m.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const providerLabel = m.provider === 'opencode' ? 'OpenCode' : (m.provider === 'kilo' ? 'Kilo AI' : 'OmniRush');
+      const pState = probeStates[m.id];
+      let probeClass = 'probe-output';
+      let probeHtml = '';
+      if (pState) {
+        if (pState.loading) {
+          probeClass = 'probe-output show';
+          probeHtml = `<span>Testing the model against the upstream…</span>`;
+        } else if (pState.status === 'ok') {
+          probeClass = 'probe-output show ok';
+          probeHtml = `<span><strong>200 OK</strong> (${pState.latency_ms} ms) &middot; ${escapeHtml(pState.reply)}</span>`;
+        } else {
+          probeClass = 'probe-output show err';
+          probeHtml = `<span><strong>Failed</strong> (${pState.latency_ms || 0} ms) &middot; ${escapeHtml(pState.error || 'Upstream error')}</span>`;
+        }
+      }
+
+      item.innerHTML = `
+        <div class="model-main">
+          <div class="model-left">
+            <div class="model-title-row">
+              <span class="model-name">${escapeHtml(m.name)}</span>
+            </div>
+            <div class="model-tag-row">
+              <span class="badge-tag">${providerLabel}</span>
+              ${m.reasoning ? '<span class="badge-tag reasoning">Reasoning</span>' : ''}
+              ${m.healthy === false ? '<span class="badge-tag quarantined">Quarantined</span>' : ''}
+            </div>
+            <div class="model-sub-row">
+              <button type="button" class="id-chip mono" onclick="copyModelId('${escapeHtml(m.id)}', this)" title="Tap to copy the model ID">
+                <span>${escapeHtml(m.id)}</span>
+                <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              </button>
+              <span class="model-meta mono" title="Context ${formatTokens(m.context)} · Max output ${formatTokens(m.max)}">${formatTokens(m.context)} → ${formatTokens(m.max)}</span>
+            </div>
+          </div>
+          <div class="model-right">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="probeModel('${escapeHtml(m.id)}')" ${pState && pState.loading ? 'disabled' : ''} title="Test this model" aria-label="Test model ${escapeHtml(m.name)}">
+              <svg class="icon" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3Z"/></svg>
+              <span class="btn-label">${pState && pState.loading ? 'Testing' : 'Test'}</span>
+            </button>
+            <label class="switch" title="Enable or hide this model">
+              <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleModel('${escapeHtml(m.id)}', this.checked, this)">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="${probeClass}">${probeHtml}</div>
+      `;
+      container.appendChild(item);
+    });
+  }
+
+  async function copyModelId(modelId, btnEl) {
+    try {
+      await navigator.clipboard.writeText(modelId);
+      btnEl.classList.add('copied');
+      showToast('Copied ID: ' + modelId);
+      setTimeout(() => btnEl.classList.remove('copied'), 1200);
+    } catch (_) {
+      showToast(modelId);
+    }
+  }
+
+  async function toggleModel(modelId, enabled, checkboxEl) {
+    const target = allModels.find(m => m.id === modelId);
+    if (target) target.enabled = enabled;
+    updateCounts();
+
+    const row = checkboxEl ? checkboxEl.closest('.model-item') : null;
+    if (row) row.classList.toggle('disabled-row', !enabled);
+
+    try {
+      const res = await mutate(`api/models/toggle?model=${encodeURIComponent(modelId)}&enabled=${enabled ? '1' : '0'}`);
+      const data = await res.json();
+      if (data.status !== 'ok') throw new Error(data.error?.message || 'Failed menyimpan');
+      showToast(`${modelId} ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      if (target) target.enabled = !enabled;
+      if (checkboxEl) checkboxEl.checked = !enabled;
+      if (row) row.classList.toggle('disabled-row', enabled);
+      updateCounts();
+      showToast('Could not change the model state: ' + e.message);
+    }
+  }
+
+  function onBulkSwitch(el) {
+    bulkToggleVisible(el.checked, el);
+  }
+
+  async function bulkToggleVisible(enable, switchEl) {
+    const visible = getFilteredModels();
+    if (visible.length === 0) return;
+    const toChange = visible.filter(m => m.enabled !== enable);
+    if (toChange.length === 0) {
+      showToast(enable ? 'Every model in this view is already enabled' : 'Every model in this view is already disabled');
+      return;
+    }
+
+    const ids = toChange.map(m => m.id);
+    toChange.forEach(m => { m.enabled = enable; });
+    updateCounts();
+    renderModels();
+
+    try {
+      const res = await mutate(`api/models/toggle?model=${encodeURIComponent(ids.join(','))}&enabled=${enable ? '1' : '0'}`);
+      const data = await res.json();
+      if (data.status !== 'ok') throw new Error(data.error?.message || 'Bulk toggle failed');
+      showToast(`${ids.length} model ${enable ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      fetchStatus();
+      showToast('Bulk update failed: ' + e.message);
+    } finally {
+      if (switchEl) switchEl.checked = visible.every(m => m.enabled);
+    }
+  }
+
+  async function probeModel(modelId) {
+    probeStates[modelId] = { loading: true };
+    renderModels();
+
+    try {
+      const res = await mutate(`api/models/probe?model=${encodeURIComponent(modelId)}`);
+      const data = await res.json();
+      if (data.status === 'ok') {
+        probeStates[modelId] = {
+          loading: false,
+          status: 'ok',
+          latency_ms: data.latency_ms,
+          reply: data.reply || 'OK'
+        };
+      } else {
+        probeStates[modelId] = {
+          loading: false,
+          status: 'error',
+          latency_ms: data.latency_ms,
+          error: data.error?.message || data.error || 'Error'
+        };
+      }
+    } catch (e) {
+      probeStates[modelId] = {
+        loading: false,
+        status: 'error',
+        latency_ms: 0,
+        error: e.message
+      };
+    }
+    renderModels();
+  }
+
+  async function startOmniAuth() {
+    document.getElementById('importDrawer').classList.remove('open');
+    const btn = document.getElementById('btnConnectOmni');
+    btn.disabled = true;
+
+    try {
+      const res = await mutate('api/omnirush/start');
+      const data = await res.json();
+      if (data.status !== 'ok') {
+        throw new Error(data.error?.message || data.error || 'Could not request an authorization code');
+      }
+
+      document.getElementById('userCodeText').textContent = data.user_code;
+      document.getElementById('btnOpenAuthorize').href = data.verification_uri_complete || data.verification_uri;
+      applyReferral(data.referral_url);
+      document.getElementById('deviceFlowDrawer').classList.add('open');
+
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`api/omnirush/poll?device_code=${encodeURIComponent(data.device_code)}`);
+          const pollData = await pollRes.json();
+          if (pollData.status === 'approved') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            showToast('OmniRush account connected');
+            fetchStatus();
+          } else if (pollData.status === 'expired' || pollData.status === 'error') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            document.getElementById('pollStatusText').className = 'status-pill err';
+            document.getElementById('pollStatusText').textContent = 'The code expired — start again';
+          }
+        } catch (_) {}
+      }, (data.interval || 4) * 1000);
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function copyUserCodeSilent() {
+    const code = document.getElementById('userCodeText').textContent;
+    if (code && code !== '----') {
+      navigator.clipboard.writeText(code).catch(() => {});
+    }
+  }
+
+  function copyUserCode() {
+    const code = document.getElementById('userCodeText').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      showToast('Verification code ' + code + ' copied');
+    }).catch(() => {
+      showToast('Code: ' + code);
+    });
+  }
+
+  function cancelOmniAuth() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = null;
+    document.getElementById('deviceFlowDrawer').classList.remove('open');
+  }
+
+  function toggleImportDrawer() {
+    cancelOmniAuth();
+    const dr = document.getElementById('importDrawer');
+    dr.classList.toggle('open');
+  }
+
+  async function submitTokenImport() {
+    const raw = document.getElementById('importJsonInput').value.trim();
+    if (!raw) {
+      showToast('Please enter a JSON payload or token first');
+      return;
+    }
+    const btn = document.getElementById('btnSubmitImport');
+    btn.disabled = true;
+
+    try {
+      let query = '';
+      if (raw.startsWith('{')) {
+        query = 'json=' + encodeURIComponent(raw);
+      } else {
+        query = 'refresh_token=' + encodeURIComponent(raw);
+      }
+      const res = await mutate('api/omnirush/import?' + query);
+      const data = await res.json();
+      if (data.status !== 'ok') {
+        throw new Error(data.error?.message || 'Token is not valid');
+      }
+      document.getElementById('importJsonInput').value = '';
+      document.getElementById('importDrawer').classList.remove('open');
+      showToast('OmniRush credentials saved');
+      fetchStatus();
+    } catch (e) {
+      showToast('Failed impor: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function requestDisconnectOmni() {
+    document.getElementById('btnDisconnectOmni').style.display = 'none';
+    document.getElementById('btnConfirmDisconnect').style.display = 'inline-flex';
+    document.getElementById('btnCancelDisconnect').style.display = 'inline-flex';
+  }
+
+  /* ── OmniRush account pool ──────────────────────────────────────────── */
+  let pendingRemove = { id: '', at: 0 };
+
+  let referralURL = '';
+
+  // The URL is kept in JS only: the button reads "No account yet?" and opens the
+  // sign-up page without exposing the invite link or referral code.
+  function applyReferral(url) {
+    referralURL = url || '';
+    const btn = document.getElementById('btnReferral');
+    if (!btn) return;
+    if (!referralURL) {
+      btn.style.display = 'none';
+      btn.removeAttribute('href');
+      return;
+    }
+    btn.href = referralURL;
+    btn.style.display = 'inline-flex';
+  }
+
+  function omniRelativeTime(iso) {
+    if (!iso) return '';
+    const then = Date.parse(iso);
+    if (Number.isNaN(then)) return '';
+    const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (secs < 60) return 'just now';
+    if (secs < 3600) return Math.round(secs / 60) + 'm ago';
+    if (secs < 86400) return Math.round(secs / 3600) + 'h ago';
+    return Math.round(secs / 86400) + 'd ago';
+  }
+
+  function omniStatusClass(status) {
+    if (status === 'active') return 'ok';
+    if (status === 'cooldown') return 'warn';
+    if (status === 'error') return 'err';
+    return '';
+  }
+
+  function omniStatusLabel(acct) {
+    switch (acct.status) {
+      case 'active':
+        return acct.lastUsed ? 'used ' + omniRelativeTime(acct.lastUsed) : 'ready';
+      case 'cooldown':
+        return 'cooling down';
+      case 'error':
+        return acct.lastError ? acct.lastError.slice(0, 48) : 'error';
+      case 'disabled':
+        return 'disabled';
+      default:
+        return 'idle';
+    }
+  }
+
+  function renderOmniAccounts(accounts) {
+    const list = document.getElementById('omniAccountList');
+    if (!list) return;
+    list.textContent = '';
+
+    if (!accounts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'account-empty';
+      empty.textContent = 'No accounts linked yet. Use Add account to sign this device in.';
+      list.appendChild(empty);
+      return;
+    }
+
+    accounts.forEach((acct) => {
+      const row = document.createElement('div');
+      row.className = 'account-row' + (acct.enabled ? '' : ' is-off');
+
+      const main = document.createElement('div');
+      main.className = 'account-row-main';
+      const email = document.createElement('div');
+      email.className = 'account-row-email';
+      email.textContent = acct.email || acct.id;
+      email.title = acct.email || acct.id;
+
+      const meta = document.createElement('div');
+      meta.className = 'account-row-meta';
+      const dot = document.createElement('span');
+      dot.className = 'account-dot ' + omniStatusClass(acct.status);
+      const metaText = document.createElement('span');
+      metaText.className = 'meta-text';
+      metaText.textContent = omniStatusLabel(acct);
+      meta.append(dot, metaText);
+      main.append(email, meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'account-row-actions';
+
+      const sw = document.createElement('label');
+      sw.className = 'switch';
+      sw.title = acct.enabled ? 'Disable this account' : 'Enable this account';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!acct.enabled;
+      cb.addEventListener('change', () => toggleOmniAccountUI(acct.id, cb.checked, cb));
+      const slider = document.createElement('span');
+      slider.className = 'slider';
+      sw.append(cb, slider);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'icon-btn danger';
+      remove.title = 'Remove this account';
+      remove.setAttribute('aria-label', 'Remove ' + (acct.email || acct.id));
+      remove.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+      remove.addEventListener('click', () => removeOmniAccountUI(acct.id, acct.email || acct.id));
+
+      actions.append(sw, remove);
+      row.append(main, actions);
+      list.appendChild(row);
+    });
+  }
+
+  async function toggleOmniAccountUI(id, enabled, el) {
+    try {
+      const res = await mutate('api/omnirush/toggle?id=' + encodeURIComponent(id) + '&enabled=' + (enabled ? '1' : '0'));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      renderOmniAccounts(data.accounts || []);
+      showToast(enabled ? 'Account enabled' : 'Account disabled');
+      fetchStatus(true);
+    } catch (e) {
+      if (el) el.checked = !enabled;
+      showToast('Could not update account: ' + e.message);
+    }
+  }
+
+  async function removeOmniAccountUI(id, label) {
+    const now = Date.now();
+    if (pendingRemove.id !== id || now - pendingRemove.at > 4000) {
+      pendingRemove = { id, at: now };
+      showToast('Tap × again to remove ' + label);
+      return;
+    }
+    pendingRemove = { id: '', at: 0 };
+    try {
+      const res = await mutate('api/omnirush/remove?id=' + encodeURIComponent(id));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      renderOmniAccounts(data.accounts || []);
+      showToast('Removed ' + label);
+      fetchStatus(true);
+    } catch (e) {
+      showToast('Could not remove account: ' + e.message);
+    }
+  }
+
+  function cancelDisconnectOmni() {
+    document.getElementById('btnConfirmDisconnect').style.display = 'none';
+    document.getElementById('btnCancelDisconnect').style.display = 'none';
+  }
+
+  async function confirmDisconnectOmni() {
+    try {
+      const res = await mutate('api/omnirush/disconnect');
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast('All OmniRush accounts signed out');
+        fetchStatus();
+      }
+    } catch (e) {
+      showToast('Could not disconnect: ' + e.message);
+    }
+  }
+
+  async function runNetworkPing() {
+    const btn = document.getElementById('btnPingTest');
+    btn.disabled = true;
+    try {
+      const res = await fetch('api/proxy/ping');
+      const data = await res.json();
+      const scEl = document.getElementById('teleSidecar');
+      if (data.sidecar_ms && data.sidecar_ms !== 'down') {
+        scEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.sidecar_ms} ms`;
+      } else {
+        scEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
+      }
+      const pxEl = document.getElementById('teleProxy');
+      if (data.proxy_ms && data.proxy_ms !== 'down') {
+        pxEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.proxy_ms} ms`;
+      } else {
+        pxEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Down`;
+      }
+      showToast(`Latensi diperbarui: Sidecar ${data.sidecar_ms}ms, Proxy ${data.proxy_ms}ms`);
+    } catch (e) {
+      showToast('Latency check failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+
+  /* ── Settings sheet ──────────────────────────────────────────────────── */
+  let settingsData = null;
+  let resetArmedAt = 0;
+
+  function openSettings() {
+    document.getElementById('settingsSheet').classList.add('open');
+    document.getElementById('settingsBackdrop').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    loadSettings();
+  }
+
+  function closeSettings() {
+    document.getElementById('settingsSheet').classList.remove('open');
+    document.getElementById('settingsBackdrop').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('api/settings', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      settingsData = await res.json();
+      renderSettings();
+    } catch (e) {
+      showToast('Could not load settings: ' + e.message);
+    }
+  }
+
+  function sv(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value == null ? '' : value;
+  }
+
+  function gv(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  }
+
+  function sc(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+  }
+
+  function renderSettings() {
+    if (!settingsData) return;
+    const cfg = settingsData.settings || {};
+    const proxy = cfg.proxy || {};
+    const identity = cfg.identity || {};
+    const request = cfg.request || {};
+    const logging = cfg.logging || {};
+
+    sv('setOpenCodeProxy', proxy.opencode);
+    sv('setOpenCodePool', proxy.opencodePool);
+    sc('setAllowDatacenter', proxy.allowDatacenter);
+    sv('setDatacenterPool', proxy.datacenterPool);
+    sv('setOmniRushProxy', proxy.omnirush);
+    sc('setMimicCli', identity.mimicCli);
+    sv('setUserAgent', identity.userAgent);
+    sv('setClient', identity.client);
+    sv('setProject', identity.project);
+    sv('setSessionId', identity.sessionId);
+    sv('setSidecar', identity.sidecar);
+    sv('setHeaderTimeout', request.headerTimeoutSec);
+    sv('setOmniTimeout', request.omnirushTimeoutSec);
+    sv('setOmniReasoning', request.omnirushReasoning || '');
+    sv('setMaxRetries', request.maxRetries);
+    sv('setStripFields', request.stripFields);
+    sv('setKeepFields', request.keepFields);
+    sc('setDebug', logging.debug);
+
+    const pathHint = document.getElementById('settingsPathHint');
+    if (pathHint) pathHint.textContent = settingsData.path || '';
+
+    const strip = document.getElementById('effectiveStrip');
+    if (strip) {
+      const eff = settingsData.effective || {};
+      const chips = [];
+      chips.push(['Proxy', eff.opencodeProxy || 'direct']);
+      if (Array.isArray(eff.opencodePool) && eff.opencodePool.length) {
+        chips.push(['Pool', eff.opencodePool.join(' → ')]);
+      }
+      if (eff.allowDatacenter) chips.push(['Datacenter', 'allowed']);
+      chips.push(['Sidecar', eff.sidecar || 'none']);
+      chips.push(['OmniRush', eff.omnirushProxy || 'direct']);
+      chips.push(['Timeout', (eff.headerTimeout || 120) + 's']);
+      chips.push(['OmniRush', (eff.omnirushTimeout || 45) + 's' + (eff.omnirushReasoning ? ' · ' + eff.omnirushReasoning : '')]);
+      strip.innerHTML = chips.map(([label, value]) =>
+        `<span class="effective-chip" title="${escapeHtml(label + ': ' + value)}">${escapeHtml(label)} · <span class="mono">${escapeHtml(value)}</span></span>`
+      ).join('');
+    }
+
+    const hints = settingsData.hints || {};
+    const activeHints = Object.keys(hints).filter((k) => hints[k] === 'overridden in settings');
+    if (activeHints.length) {
+      showToast('Env values overridden: ' + activeHints.join(', '));
+    }
+  }
+
+  function b64url(text) {
+    const bytes = new TextEncoder().encode(text);
+    let binary = '';
+    bytes.forEach((b) => { binary += String.fromCharCode(b); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function collectSettings() {
+    return {
+      proxy: {
+        opencode: gv('setOpenCodeProxy'),
+        opencodePool: gv('setOpenCodePool'),
+        allowDatacenter: document.getElementById('setAllowDatacenter').checked,
+        datacenterPool: gv('setDatacenterPool'),
+        omnirush: gv('setOmniRushProxy'),
+      },
+      identity: {
+        mimicCli: document.getElementById('setMimicCli').checked,
+        userAgent: gv('setUserAgent'),
+        client: gv('setClient'),
+        project: gv('setProject'),
+        sessionId: gv('setSessionId'),
+        sidecar: gv('setSidecar'),
+      },
+      request: {
+        headerTimeoutSec: Number(gv('setHeaderTimeout')) || 120,
+        omnirushTimeoutSec: Number(gv('setOmniTimeout')) || 45,
+        omnirushReasoning: gv('setOmniReasoning'),
+        maxRetries: Number(gv('setMaxRetries')) || 0,
+        stripFields: gv('setStripFields'),
+        keepFields: gv('setKeepFields'),
+      },
+      logging: { debug: document.getElementById('setDebug').checked },
+    };
+  }
+
+  async function saveSettings() {
+    const btn = document.getElementById('btnSaveSettings');
+    const label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      // The host only routes GET/HEAD on plugin resource paths, so the payload
+      // travels as base64url in the query string; the dashboard token is what
+      // authorises the write.
+      const payload = b64url(JSON.stringify(collectSettings()));
+      const res = await mutate('api/settings/save?payload=' + payload);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      }
+      settingsData = data;
+      renderSettings();
+      showToast('Settings saved');
+      fetchStatus(true);
+    } catch (e) {
+      showToast('Save failed: ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  async function resetSettings() {
+    const now = Date.now();
+    if (now - resetArmedAt > 4000) {
+      resetArmedAt = now;
+      showToast('Tap Reset again to restore defaults');
+      return;
+    }
+    resetArmedAt = 0;
+    try {
+      const res = await mutate('api/settings/reset');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+      settingsData = data;
+      renderSettings();
+      showToast('Defaults restored');
+      fetchStatus(true);
+    } catch (e) {
+      showToast('Reset failed: ' + e.message);
+    }
+  }
+
+  async function testProxyField(kind) {
+    const inputId = kind === 'omnirush' ? 'setOmniRushProxy' : 'setOpenCodeProxy';
+    const noteId = kind === 'omnirush' ? 'testOmniRush' : 'testOpenCode';
+    const note = document.getElementById(noteId);
+    let proxy = gv(inputId);
+    let label = proxy;
+
+    // An empty field means "whatever is in force", so test that instead of a
+    // meaningless direct connection.
+    if (!proxy && settingsData && settingsData.effective) {
+      const eff = settingsData.effective;
+      proxy = kind === 'omnirush' ? (eff.omnirushProxy || '') : (eff.opencodeProxy || '');
+      label = proxy ? proxy + ' (effective)' : '';
+    }
+    if (proxy === '-') proxy = '';
+
+    note.className = 'test-note';
+    note.textContent = label ? 'Testing ' + label + '…' : 'Testing direct connection…';
+
+    const target = kind === 'omnirush' ? 'https://omnirush.ai/' : 'https://opencode.ai/';
+    try {
+      const res = await mutate('api/proxy/test?proxy=' + encodeURIComponent(proxy) + '&target=' + encodeURIComponent(target));
+      const data = await res.json();
+      if (data.status === 'ok') {
+        const parts = [];
+        if (data.tcpMs != null) parts.push(data.tcpMs + ' ms TCP');
+        if (data.httpStatus != null) parts.push('HTTP ' + data.httpStatus + ' in ' + data.httpMs + ' ms');
+        if (!parts.length) parts.push('direct connection');
+        note.className = 'test-note ok';
+        note.textContent = 'Reachable · ' + parts.join(' · ');
+      } else {
+        note.className = 'test-note err';
+        note.textContent = 'Failed' + (data.stage ? ' (' + data.stage + ')' : '') + ' · ' + (data.error || 'unknown error');
+      }
+    } catch (e) {
+      note.className = 'test-note err';
+      note.textContent = 'Failed · ' + e.message;
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSettings();
+  });
+
+  initTheme();
+  fetchStatus();
+</script>
+<!-- Settings Sheet -->
+<div class="sheet-backdrop" id="settingsBackdrop" onclick="closeSettings()"></div>
+<div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <div class="sheet-title" id="settingsTitle">Settings</div>
+    <button type="button" class="btn btn-ghost btn-icon" onclick="closeSettings()" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+    </button>
+  </div>
+
+  <div class="sheet-body" id="settingsBody">
+    <div class="sheet-section">
+      <div class="sheet-section-head">Currently in effect</div>
+      <div class="effective-strip" id="effectiveStrip"></div>
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-head">Egress &amp; proxy</div>
+
+      <div class="field">
+        <label class="field-label" for="setOpenCodeProxy">OpenCode proxy</label>
+        <div class="input-row">
+          <input type="text" class="text-input mono" id="setOpenCodeProxy" placeholder="127.0.0.1:8127" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="testProxyField('opencode')">Test</button>
+        </div>
+        <div class="field-hint">Leave empty to use the pool below. Enter <code>-</code> to force a direct connection.</div>
+        <div class="test-note" id="testOpenCode"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setOpenCodePool">Proxy pool</label>
+        <input type="text" class="text-input mono" id="setOpenCodePool" placeholder="127.0.0.1:8127, 127.0.0.1:8128" autocomplete="off" spellcheck="false">
+        <div class="field-hint">Comma separated. The first reachable entry wins.</div>
+      </div>
+
+      <div class="field field-inline">
+        <div class="field-text">
+          <label class="field-label" for="setAllowDatacenter">Datacenter fallback</label>
+          <div class="field-hint">Free-tier gates reject datacenter ASNs, so this stays off unless you know the host allows it.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="setAllowDatacenter">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setDatacenterPool">Datacenter pool</label>
+        <input type="text" class="text-input mono" id="setDatacenterPool" placeholder="127.0.0.1:8123, 127.0.0.1:8124" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setOmniRushProxy">OmniRush proxy</label>
+        <div class="input-row">
+          <input type="text" class="text-input mono" id="setOmniRushProxy" placeholder="127.0.0.1:8127" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="testProxyField('omnirush')">Test</button>
+        </div>
+        <div class="field-hint">OmniRush resets datacenter egress, so a residential proxy is usually required.</div>
+        <div class="test-note" id="testOmniRush"></div>
+      </div>
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-head">Identity &amp; decoy</div>
+
+      <div class="field field-inline">
+        <div class="field-text">
+          <label class="field-label" for="setMimicCli">Mimic the official CLI</label>
+          <div class="field-hint">Sends the CLI user agent and <span class="mono">x-opencode-*</span> headers. Turn off only to debug.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="setMimicCli">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setUserAgent">User agent</label>
+        <input type="text" class="text-input mono" id="setUserAgent" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setClient">Client / project headers</label>
+        <div class="input-row">
+          <input type="text" class="text-input mono" id="setClient" placeholder="cli" autocomplete="off" spellcheck="false">
+          <input type="text" class="text-input mono" id="setProject" placeholder="global" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field-hint">Sent as <span class="mono">x-opencode-client</span> and <span class="mono">x-opencode-project</span>.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setSessionId">Pinned session id</label>
+        <input type="text" class="text-input mono" id="setSessionId" placeholder="auto-rotated" autocomplete="off" spellcheck="false">
+        <div class="field-hint">A fixed value keeps one decoy session across restarts. Leave empty to rotate automatically.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setSidecar">Sidecar base URL</label>
+        <input type="text" class="text-input mono" id="setSidecar" placeholder="auto (127.0.0.1:8789)" autocomplete="off" spellcheck="false">
+        <div class="field-hint">Empty probes <span class="mono">127.0.0.1:8789</span>, then falls back to <span class="mono">OPENCODE_BASE_URL</span>.</div>
+      </div>
+
+
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-head">Request</div>
+
+      <div class="field">
+        <label class="field-label" for="setHeaderTimeout">Response header timeout (seconds)</label>
+        <input type="number" class="text-input mono" id="setHeaderTimeout" min="5" max="900" step="5" inputmode="numeric">
+        <div class="field-hint">Bodies stream, so only the wait for headers is bounded.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setOmniTimeout">OmniRush start timeout (seconds)</label>
+        <input type="number" class="text-input mono" id="setOmniTimeout" min="5" max="900" step="5" inputmode="numeric">
+        <div class="field-hint">The free tier queues while the account is busy. Past this wait the request fails with a clear error instead of hanging.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setOmniReasoning">OmniRush reasoning effort</label>
+        <select class="text-input" id="setOmniReasoning">
+          <option value="">Model default (auto)</option>
+          <option value="minimal">minimal — fastest</option>
+          <option value="low">low — fast</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="xhigh">xhigh</option>
+          <option value="max">max — slowest</option>
+        </select>
+        <div class="field-hint">Applied only when a client sends no <span class="mono">reasoning_effort</span>.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setMaxRetries">Max retries</label>
+        <input type="number" class="text-input mono" id="setMaxRetries" min="0" max="10" step="1" inputmode="numeric">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setStripFields">Extra stripped fields</label>
+        <input type="text" class="text-input mono" id="setStripFields" placeholder="thinking, web_search" autocomplete="off" spellcheck="false">
+        <div class="field-hint">Added to the built-in list that free-tier upstreams reject.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setKeepFields">Always keep fields</label>
+        <input type="text" class="text-input mono" id="setKeepFields" placeholder="reasoning_effort" autocomplete="off" spellcheck="false">
+        <div class="field-hint">Wins over the strip list.</div>
+      </div>
+    </div>
+
+    <div class="sheet-section">
+      <div class="sheet-section-head">Logging</div>
+      <div class="field field-inline">
+        <div class="field-text">
+          <label class="field-label" for="setDebug">Verbose logging</label>
+          <div class="field-hint">Adds per-request tracing to the plugin log.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="setDebug">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="field-hint mono" id="settingsPathHint"></div>
+    </div>
+  </div>
+
+  <div class="sheet-foot">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="resetSettings()">Reset</button>
+    <button type="button" class="btn btn-primary btn-sm" id="btnSaveSettings" onclick="saveSettings()">Save settings</button>
+  </div>
+</div>
+
+</body>
+</html>

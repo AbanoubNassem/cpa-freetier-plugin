@@ -60,7 +60,6 @@ import "C"
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -91,7 +90,7 @@ const (
 	// OpenCode v2 Endpoints
 	opencodeChatURL      = "https://opencode.ai/inference/openai/v1/chat/completions"
 	opencodeResponsesURL = "https://opencode.ai/inference/openai/v1/responses"
-	opencodeClientUA     = "opencode/latest/2.0.32/cli"
+	opencodeClientUA     = "opencode/latest/2.1.4/cli"
 
 	// Kilo Endpoints
 	kiloChatURL = "https://api.kilo.ai/api/gateway/chat/completions"
@@ -100,22 +99,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.3.0"
-
-const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-const sessionPrefixMask = (uint64(1) << 48) - 1
-
-var (
-	sessionMu      sync.Mutex
-	lastSessionTs  int64
-	sessionCounter int64
-	cachedSessions = make(map[string]sessionEntry)
-)
-
-type sessionEntry struct {
-	sessionID string
-	lastUsed  time.Time
-}
+var pluginVersion = "1.4.0"
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 //
@@ -147,6 +131,9 @@ var (
 )
 
 func debugEnabled() bool {
+	if loadPluginSettings().Logging.Debug {
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("CPA_FREETIER_DEBUG"))) {
 	case "1", "true", "yes", "on":
 		return true
@@ -275,6 +262,9 @@ func dialable(addr string) bool {
 }
 
 func datacenterAllowed() bool {
+	if loadPluginSettings().Proxy.AllowDatacenter {
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("OPENCODE_ALLOW_DATACENTER"))) {
 	case "1", "true", "yes", "on":
 		return true
@@ -307,7 +297,24 @@ func validProxyTarget(u *url.URL) bool {
 // separated, host:port or full URL), otherwise the compiled-in default. An
 // explicitly empty value means "probe nothing", which is how a user opts out.
 func proxyPool(envName string, defaults []string) []*url.URL {
+	// A dashboard-saved pool wins over the environment so the panel is the
+	// single place to change egress without touching service config.
+	cfg := loadPluginSettings()
+	settingsValue := ""
+	switch envName {
+	case "OPENCODE_PROXY_POOL":
+		settingsValue = cfg.Proxy.OpenCodePool
+	case "OPENCODE_DATACENTER_PROXY_POOL":
+		settingsValue = cfg.Proxy.DatacenterPool
+	}
+	if settingsValue == proxyDisabledSentinel {
+		return nil
+	}
+
 	raw, configured := os.LookupEnv(envName)
+	if strings.TrimSpace(settingsValue) != "" {
+		raw, configured = settingsValue, true
+	}
 	if !configured {
 		raw = strings.Join(defaults, ",")
 	}
@@ -343,7 +350,10 @@ func proxyReachable(u *url.URL) bool {
 // getOpenCodeProxy returns the egress for OpenCode, or nil for the ambient
 // HTTP(S)_PROXY / direct connection.
 func getOpenCodeProxy() *url.URL {
-	// Explicit override always wins.
+	// Dashboard setting, then environment, then the probe order below.
+	if u, handled := settingsOpenCodeProxy(); handled {
+		return u
+	}
 	if p := strings.TrimSpace(os.Getenv("OPENCODE_PROXY")); p != "" {
 		if u, err := url.Parse(p); err == nil {
 			return u
@@ -399,7 +409,7 @@ func newTransport(proxy *url.URL) *http.Transport {
 		MaxIdleConnsPerHost:   32,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 120 * time.Second, // bodies stream, headers must not hang
+		ResponseHeaderTimeout: settingsHeaderTimeout(), // bodies stream, headers must not hang
 		ExpectContinueTimeout: 1 * time.Second,
 		// Stay on HTTP/1.1 through the CONNECT proxy: that is the wire shape the
 		// OpenCode free-tier gate currently accepts.
@@ -430,6 +440,23 @@ func invalidateTransport(key string) {
 		v.(*http.Transport).CloseIdleConnections()
 	}
 	transportCache.Delete(key)
+}
+
+// getTransportWithTimeout is getTransport with a per-key header timeout, used by
+// OmniRush where the free-tier queue must not look like an infinite hang.
+func getTransportWithTimeout(key string, proxy *url.URL, headerTimeout time.Duration) *http.Transport {
+	if v, ok := transportCache.Load(key); ok {
+		return v.(*http.Transport)
+	}
+	tr := newTransport(proxy)
+	if headerTimeout > 0 {
+		tr.ResponseHeaderTimeout = headerTimeout
+	}
+	if actual, loaded := transportCache.LoadOrStore(key, tr); loaded {
+		tr.CloseIdleConnections()
+		return actual.(*http.Transport)
+	}
+	return tr
 }
 
 func getHTTPClient(forOpenCode bool) *http.Client {
@@ -618,7 +645,7 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 	case "plugin.register", "plugin.reconfigure":
 		ensureAuthDescriptor()
 		return ok(map[string]any{
-			"schema_version": 1,
+			"schema_version": 6,
 			"metadata": map[string]any{
 				"Name":             pluginID,
 				"Version":          pluginVersion,
@@ -633,8 +660,13 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 				"executor_input_formats":  []string{"chat-completions"},
 				"executor_output_formats": []string{"chat-completions"},
 				"request_normalizer":      true,
+				"management_api":          true,
 			},
 		})
+	case "management.register":
+		return handleManagementRegister(raw)
+	case "management.handle":
+		return handleManagementHandle(raw)
 	case "request.normalize":
 		return normalizeRequest(raw)
 	case "model.static", "model.for_auth":
@@ -701,7 +733,11 @@ var defaultSanitizeFields = []string{
 // even when they appear in the strip list.
 func keepFields() map[string]bool {
 	keep := make(map[string]bool)
-	for _, f := range strings.Split(os.Getenv("CPA_KEEP_FIELDS"), ",") {
+	raw := os.Getenv("CPA_KEEP_FIELDS")
+	if v := strings.TrimSpace(loadPluginSettings().Request.KeepFields); v != "" {
+		raw = v
+	}
+	for _, f := range strings.Split(raw, ",") {
 		f = strings.TrimSpace(f)
 		if f != "" {
 			keep[f] = true
@@ -713,7 +749,11 @@ func keepFields() map[string]bool {
 func sanitizePayloadMap(bodyMap map[string]any) bool {
 	changed := false
 	fieldsToStrip := append([]string(nil), defaultSanitizeFields...)
-	if custom := os.Getenv("CPA_STRIP_FIELDS"); custom != "" {
+	custom := os.Getenv("CPA_STRIP_FIELDS")
+	if v := strings.TrimSpace(loadPluginSettings().Request.StripFields); v != "" {
+		custom = v
+	}
+	if custom != "" {
 		for _, f := range strings.Split(custom, ",") {
 			f = strings.TrimSpace(f)
 			if f != "" {
@@ -846,8 +886,8 @@ func sanitizeAndNormalizePayload(payload []byte, model string) []byte {
 // Supports operator-configured model exclusions so models can be hidden from
 // the catalog (/v1/models) and rejected locally before contacting upstream.
 // Reads from:
-//   1. Environment variable CPA_EXCLUDED_MODELS (comma-separated or JSON array)
-//   2. Descriptor JSON file(s) in auth-dir (e.g. cpa-freetier-plugin.json with "excluded_models": [...])
+//  1. Environment variable CPA_EXCLUDED_MODELS (comma-separated or JSON array)
+//  2. Descriptor JSON file(s) in auth-dir (e.g. cpa-freetier-plugin.json with "excluded_models": [...])
 var (
 	excludedModelsMu    sync.RWMutex
 	cachedExcludedRules []string
@@ -1082,6 +1122,12 @@ func listModels() []map[string]any {
 		{"nvidia/nemotron-3.5-content-safety:free", "Nemotron 3.5 Content Safety Free (Kilo)", 128000, 8192, false},
 	}
 
+	// OmniRush models come from the account's live gateway catalog: the ids the
+	// account is actually served, not a list baked into this binary.
+	for _, m := range omniRushCatalog() {
+		items = append(items, modelDef{m.ID, m.Name + " (OmniRush)", m.Context, m.Output, m.Reasoning})
+	}
+
 	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		// Respect operator model exclusions (Issue #5)
@@ -1116,6 +1162,7 @@ func execute(raw []byte) ([]byte, error) {
 		return errorEnvelope("model_not_found", fmt.Sprintf("model %q is excluded by plugin configuration", req.Model), 404), nil
 	}
 	logMsg("execute start: model=%s", req.Model)
+	callerTools, hasCallerTools := extractCallerTools(req.Payload)
 	resp, err := callUpstream(req.Model, req.Payload, false)
 	if err != nil {
 		logMsg("execute callUpstream err: %v", err)
@@ -1144,7 +1191,7 @@ func execute(raw []byte) ([]byte, error) {
 
 	body := bodyBuf.Bytes()
 	if isSSE {
-		body = assembleSSE(body, req.Model)
+		body = assembleSSEWithTools(body, req.Model, hasCallerTools, callerTools)
 	}
 
 	logMsg("execute complete: model=%s, len=%d", req.Model, len(body))
@@ -1167,6 +1214,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	}
 
 	logMsg("executeStream start: model=%s, stream_id=%s", req.Model, req.StreamID)
+	callerTools, hasCallerTools := extractCallerTools(req.Payload)
 
 	// Exactly one close per stream, whichever path fails first.
 	var closeOnce sync.Once
@@ -1183,6 +1231,7 @@ func executeStream(raw []byte) ([]byte, error) {
 		}
 		defer resp.body.Close()
 
+		filter := newStreamToolFilter(hasCallerTools, callerTools)
 		scanner := bufio.NewScanner(resp.body)
 		scanner.Buffer(make([]byte, 256*1024), maxSSELineBytes)
 
@@ -1206,8 +1255,10 @@ func executeStream(raw []byte) ([]byte, error) {
 				break
 			}
 
-			// Restore tool names if any were renamed
-			cleaned = restoreToolNamesInLine(cleaned)
+			cleaned, shouldEmit := filter.filterChunk(cleaned)
+			if !shouldEmit {
+				continue
+			}
 
 			if errEmit := emitStream(req.StreamID, []byte(cleaned)); errEmit != nil {
 				logMsg("executeStream emitStream error: %v", errEmit)
@@ -1241,20 +1292,57 @@ func restoreToolNamesInLine(line string) string {
 
 func decodeRequest(raw []byte) (executorRequest, error) {
 	var req executorRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return req, err
+	if err := json.Unmarshal(raw, &req); err == nil && len(req.Payload) > 0 {
+		if strings.TrimSpace(req.Model) == "" {
+			return req, fmt.Errorf("model is required")
+		}
+		return req, nil
 	}
-	if strings.TrimSpace(req.Model) == "" {
-		return req, fmt.Errorf("model is required")
+
+	// Tolerant fallback: payload can be raw JSON or case-insensitive fields
+	var alt struct {
+		Model           string          `json:"model"`
+		ModelUpper      string          `json:"Model"`
+		StreamID        string          `json:"stream_id"`
+		StreamIDUpper   string          `json:"StreamID"`
+		Payload         json.RawMessage `json:"payload"`
+		PayloadUpper    json.RawMessage `json:"Payload"`
+		OriginalRequest json.RawMessage `json:"original_request"`
+		OriginalUpper   json.RawMessage `json:"OriginalRequest"`
 	}
-	if len(req.Payload) == 0 {
-		if len(req.OriginalRequest) > 0 {
-			req.Payload = req.OriginalRequest
-		} else {
+	if err := json.Unmarshal(raw, &alt); err == nil {
+		model := alt.Model
+		if model == "" {
+			model = alt.ModelUpper
+		}
+		streamID := alt.StreamID
+		if streamID == "" {
+			streamID = alt.StreamIDUpper
+		}
+		payload := alt.Payload
+		if len(payload) == 0 {
+			payload = alt.PayloadUpper
+		}
+		if len(payload) == 0 {
+			payload = alt.OriginalRequest
+		}
+		if len(payload) == 0 {
+			payload = alt.OriginalUpper
+		}
+		if strings.TrimSpace(model) == "" {
+			return req, fmt.Errorf("model is required")
+		}
+		if len(payload) == 0 {
 			return req, fmt.Errorf("request payload is required")
 		}
+		return executorRequest{
+			Model:    model,
+			StreamID: streamID,
+			Payload:  []byte(payload),
+		}, nil
 	}
-	return req, nil
+
+	return req, fmt.Errorf("invalid executor request payload")
 }
 
 // ── Model health ────────────────────────────────────────────────────────────
@@ -1346,7 +1434,7 @@ func modelHealthy(id string) bool {
 }
 
 func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse, error) {
-	cleanModel := strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/")
+	cleanModel := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(model, "opencode/"), "kilo/"), "omnirush/")
 	payload = sanitizeAndNormalizePayload(payload, cleanModel)
 	var (
 		resp *upstreamResponse
@@ -1354,6 +1442,8 @@ func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse,
 	)
 	if kiloModels[model] || kiloModels[cleanModel] {
 		resp, err = callKilo(model, payload, stream)
+	} else if isOmniRushModelID(model) || isOmniRushModelID(cleanModel) {
+		resp, err = callOmniRush(cleanModel, payload, stream)
 	} else {
 		resp, err = callOpenCode(cleanModel, payload, stream)
 	}
@@ -1362,6 +1452,10 @@ func callUpstream(model string, payload []byte, stream bool) (*upstreamResponse,
 }
 
 func getOpenCodeBaseURL() string {
+	if base, ok := settingsSidecarBase(); ok {
+		// Explicitly disabled, or a concrete base URL. Either way it wins over env.
+		return base
+	}
 	if u := strings.TrimRight(os.Getenv("OPENCODE_BASE_URL"), "/"); u != "" {
 		return u
 	}
@@ -1375,73 +1469,138 @@ func getOpenCodeBaseURL() string {
 
 func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse, error) {
 	baseURL := getOpenCodeBaseURL()
-	targetURL := opencodeChatURL
-	if baseURL != "" {
-		targetURL = baseURL + "/inference/openai/v1/chat/completions"
-	} else if model == "muse-spark-1.3-contributor-free" || model == "muse-spark-1.2-contributor-free" {
-		// Dormant: both muse-spark free ids were retired upstream (400 unknown model /
-		// 410 ModelDeprecated) and are no longer advertised. Kept so a future
-		// Responses-only model can be routed here again.
-		targetURL = opencodeResponsesURL
-	}
+	cleanRequested := strings.TrimPrefix(model, "opencode/")
 
-	// The body is never written to the log: it can carry the whole conversation.
-	logMsg("callOpenCode: start model=%s targetURL=%s payloadLen=%d payloadHash=%s", model, targetURL, len(payload), payloadFingerprint(payload))
-	transformedPayload := cloakOpencodePayload(payload, targetURL == opencodeResponsesURL)
-	sessionID := getOrCreateSession("opencode_global")
-	logDebug("callOpenCode: sessionID=%s transformedLen=%d", sessionID, len(transformedPayload))
-
-	headers := http.Header{
-		"Content-Type":          []string{"application/json"},
-		"Authorization":         []string{"Bearer public"},
-		"User-Agent":            []string{opencodeClientUA},
-		"x-opencode-client":     []string{"cli"},
-		"x-opencode-project":    []string{"global"},
-		"x-opencode-session-id": []string{sessionID},
-		"x-opencode-session":    []string{sessionID},
-		"x-session-affinity":    []string{sessionID},
-		"x-session-id":          []string{sessionID},
-		"X-Session-Id":          []string{sessionID},
-		"Accept":                []string{"text/event-stream"},
-	}
-
-	isLocal := strings.HasPrefix(targetURL, "http://127.0.0.1") || strings.HasPrefix(targetURL, "http://localhost")
-	var client *http.Client
-	proxyKey := "direct"
-	if isLocal {
-		client = getHTTPClient(false)
-	} else {
-		proxy := getOpenCodeProxy()
-		if proxy != nil {
-			proxyKey = proxy.String()
+	candidates := []string{cleanRequested}
+	seen := map[string]bool{cleanRequested: true}
+	for _, fb := range openCodeFallbackModels {
+		if !seen[fb] {
+			seen[fb] = true
+			candidates = append(candidates, fb)
 		}
-		client = getHTTPClient(true)
 	}
-	logDebug("callOpenCode: egress=%s", proxyKey)
 
-	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(transformedPayload))
-	if err != nil {
-		return nil, err
+	var payloadMap map[string]any
+	if err := json.Unmarshal(payload, &payloadMap); err != nil {
+		return nil, fmt.Errorf("invalid json payload: %w", err)
 	}
-	req.Header = headers
 
-	started := time.Now()
-	res, err := client.Do(req)
-	if err != nil {
-		if !isLocal {
-			invalidateTransport(proxyKey)
-			invalidateOpenCodeProxy()
+	if sanitizePayloadMap(payloadMap) {
+		logDebug("callOpenCode: stripped unsupported parameters")
+	}
+
+	injectOpenCodeHarness(payloadMap)
+
+	sessionID := strings.TrimSpace(loadPluginSettings().Identity.SessionID)
+	if sessionID == "" {
+		sessionID = getOrCreateSession("opencode_global")
+	}
+
+	identity := loadPluginSettings().Identity
+	if identity.MimicCLI && (strings.EqualFold(strings.TrimSpace(identity.UserAgent), "") || identity.UserAgent == "opencode/latest/2.0.32/cli") {
+		identity.UserAgent = opencodeClientUA
+	}
+	project := strings.TrimSpace(identity.Project)
+	if project == "" || project == "global" {
+		project = getProjectHash()
+	}
+
+	var lastErr error
+
+	for _, candidate := range candidates {
+		targetURL := opencodeChatURL
+		if baseURL != "" {
+			targetURL = baseURL + "/inference/openai/v1/chat/completions"
+		} else if candidate == "muse-spark-1.3-contributor-free" || candidate == "muse-spark-1.2-contributor-free" {
+			targetURL = opencodeResponsesURL
 		}
-		logMsg("callOpenCode: transport error model=%s egress=%s after %s: %v", model, proxyKey, time.Since(started).Round(time.Millisecond), err)
-		return nil, err
+
+		payloadMap["model"] = candidate
+		transformedPayload, err := json.Marshal(payloadMap)
+		if err != nil {
+			return nil, err
+		}
+
+		logMsg("callOpenCode: attempt model=%s targetURL=%s payloadLen=%d payloadHash=%s", candidate, targetURL, len(transformedPayload), payloadFingerprint(transformedPayload))
+		logDebug("callOpenCode: sessionID=%s candidate=%s", sessionID, candidate)
+
+		b3, tp := generateTraceHeaders()
+		headers := http.Header{
+			"Content-Type":          []string{"application/json"},
+			"Authorization":         []string{"Bearer public"},
+			"User-Agent":            []string{identity.UserAgent},
+			"x-opencode-client":     []string{identity.Client},
+			"x-opencode-project":    []string{project},
+			"x-opencode-session-id": []string{sessionID},
+			"x-opencode-session":    []string{sessionID},
+			"x-session-affinity":    []string{sessionID},
+			"x-session-id":          []string{sessionID},
+			"X-Session-Id":          []string{sessionID},
+			"b3":                    []string{b3},
+			"traceparent":           []string{tp},
+			"Accept":                []string{"text/event-stream"},
+		}
+
+		if !identity.MimicCLI {
+			// Debug mode: identify honestly and drop the CLI disguise headers.
+			headers.Set("User-Agent", "cpa-freetier-plugin/"+strings.TrimPrefix(pluginVersion, "v"))
+			for _, h := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-session-id", "x-opencode-session", "x-session-affinity", "x-session-id", "X-Session-Id", "b3", "traceparent"} {
+				headers.Del(h)
+			}
+		}
+
+		isLocal := strings.HasPrefix(targetURL, "http://127.0.0.1") || strings.HasPrefix(targetURL, "http://localhost")
+		var client *http.Client
+		proxyKey := "direct"
+		if isLocal {
+			client = getHTTPClient(false)
+		} else {
+			proxy := getOpenCodeProxy()
+			if proxy != nil {
+				proxyKey = proxy.String()
+			}
+			client = getHTTPClient(true)
+		}
+		logDebug("callOpenCode: egress=%s", proxyKey)
+
+		req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(transformedPayload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header = headers
+
+		started := time.Now()
+		res, err := client.Do(req)
+		if err != nil {
+			if !isLocal {
+				invalidateTransport(proxyKey)
+				invalidateOpenCodeProxy()
+			}
+			logMsg("callOpenCode: transport error model=%s egress=%s after %s: %v", candidate, proxyKey, time.Since(started).Round(time.Millisecond), err)
+			return nil, err
+		}
+
+		logMsg("callOpenCode: model=%s egress=%s status=%d in %s", candidate, proxyKey, res.StatusCode, time.Since(started).Round(time.Millisecond))
+
+		if res.StatusCode >= 400 {
+			b, _ := io.ReadAll(io.LimitReader(res.Body, 8192))
+			_, _ = io.Copy(io.Discard, res.Body)
+			res.Body.Close()
+			bodyStr := strings.TrimSpace(string(b))
+			lastErr = fmt.Errorf("%s: %s", res.Status, bodyStr)
+
+			if isOpenCodeFallbackError(res.StatusCode, bodyStr) {
+				markModelUnhealthy(candidate, lastErr)
+				logMsg("callOpenCode: candidate %s failed (%s), attempting next fallback...", candidate, res.Status)
+				continue
+			}
+			return nil, lastErr
+		}
+
+		return &upstreamResponse{status: res.StatusCode, header: res.Header, body: res.Body}, nil
 	}
-	logMsg("callOpenCode: model=%s egress=%s status=%d in %s", model, proxyKey, res.StatusCode, time.Since(started).Round(time.Millisecond))
-	if res.StatusCode >= 400 {
-		defer res.Body.Close()
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 8192))
-		return nil, fmt.Errorf("%s: %s", res.Status, strings.TrimSpace(string(b)))
-	}
-	return &upstreamResponse{status: res.StatusCode, header: res.Header, body: res.Body}, nil
+
+	return nil, lastErr
 }
 
 // Official OpenCode v2.0.26 fingerprint tools verbatim from 9router
@@ -1547,7 +1706,7 @@ func cloakOpencodePayload(raw []byte, isResponses bool) []byte {
 				"parameters":  fn["parameters"],
 			})
 		} else {
-			finalTools = append(finalTools, ft)
+			finalTools = append(finalTools, deepCopyMap(ft))
 		}
 	}
 
@@ -1600,62 +1759,11 @@ func callKilo(model string, payload []byte, stream bool) (*upstreamResponse, err
 	return &upstreamResponse{status: res.StatusCode, header: res.Header, body: res.Body}, nil
 }
 
-func descendingTimeHex(ts int64, counter int64) string {
-	val := uint64(^(ts*0x1000 + counter)) & sessionPrefixMask
-	return fmt.Sprintf("%012x", val)
-}
-
-func genSessionIDLocked() string {
-	now := time.Now().UnixMilli()
-	if now != lastSessionTs {
-		lastSessionTs = now
-		sessionCounter = 0
-	}
-	sessionCounter++
-
-	timeHex := descendingTimeHex(now, sessionCounter)
-	randBytes := make([]byte, 14)
-	_, _ = rand.Read(randBytes)
-	for i := range randBytes {
-		randBytes[i] = base62Chars[int(randBytes[i])%len(base62Chars)]
-	}
-	return fmt.Sprintf("ses_%s%s", timeHex, string(randBytes))
-}
-
-func genSessionID() string {
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-	return genSessionIDLocked()
-}
-
-// sessionTTL is how long a warm upstream session stays usable before a fresh
-// affinity id is generated.
-const sessionTTL = 30 * time.Minute
-
-func getOrCreateSession(key string) string {
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-
-	now := time.Now()
-	if entry, ok := cachedSessions[key]; ok {
-		if now.Sub(entry.lastUsed) < sessionTTL {
-			entry.lastUsed = now
-			cachedSessions[key] = entry
-			return entry.sessionID
-		}
-	}
-	// Expired entries used to be left behind forever; keep the map bounded.
-	for k, entry := range cachedSessions {
-		if now.Sub(entry.lastUsed) >= sessionTTL {
-			delete(cachedSessions, k)
-		}
-	}
-	id := genSessionIDLocked()
-	cachedSessions[key] = sessionEntry{sessionID: id, lastUsed: now}
-	return id
-}
-
 func assembleSSE(raw []byte, fallbackModel string) []byte {
+	return assembleSSEWithTools(raw, fallbackModel, true, nil)
+}
+
+func assembleSSEWithTools(raw []byte, fallbackModel string, hasCallerTools bool, callerTools []string) []byte {
 	lines := strings.Split(string(raw), "\n")
 	var resID string
 	var created int64
@@ -1674,6 +1782,7 @@ func assembleSSE(raw []byte, fallbackModel string) []byte {
 		} `json:"function"`
 	}
 	toolCalls := make(map[int]*toolCallObj)
+	droppedToolIndices := make(map[int]bool)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -1729,21 +1838,38 @@ func assembleSSE(raw []byte, fallbackModel string) []byte {
 					reasoningParts = append(reasoningParts, choice.Delta.ReasoningContent)
 				}
 				for _, tc := range choice.Delta.ToolCalls {
+					if !hasCallerTools {
+						continue
+					}
+					if droppedToolIndices[tc.Index] {
+						continue
+					}
+
+					name := tc.Function.Name
+					if name == "read_client" {
+						name = "read"
+					} else if name == "shell_client" {
+						name = "shell"
+					}
+
+					if name != "" && len(callerTools) > 0 && !isOfferedTool(name, callerTools) && isHarnessTool(name) {
+						droppedToolIndices[tc.Index] = true
+						delete(toolCalls, tc.Index)
+						continue
+					}
+
 					obj, exists := toolCalls[tc.Index]
 					if !exists {
+						if name == "" {
+							continue
+						}
 						obj = &toolCallObj{Type: "function"}
 						toolCalls[tc.Index] = obj
 					}
 					if tc.ID != "" {
 						obj.ID = tc.ID
 					}
-					if tc.Function.Name != "" {
-						name := tc.Function.Name
-						if name == "read_client" {
-							name = "read"
-						} else if name == "shell_client" {
-							name = "shell"
-						}
+					if name != "" {
 						obj.Function.Name = name
 					}
 					if tc.Function.Arguments != "" {
@@ -1754,25 +1880,35 @@ func assembleSSE(raw []byte, fallbackModel string) []byte {
 		}
 	}
 
+	if !hasCallerTools || len(toolCalls) == 0 {
+		if finishReason == "tool_calls" {
+			finishReason = "stop"
+		}
+	}
+
 	msg := map[string]any{
 		"role": "assistant",
 	}
 	if len(contentParts) > 0 {
 		msg["content"] = strings.Join(contentParts, "")
+	} else if !hasCallerTools {
+		msg["content"] = ""
 	} else {
 		msg["content"] = nil
 	}
 	if len(reasoningParts) > 0 {
 		msg["reasoning_content"] = strings.Join(reasoningParts, "")
 	}
-	if len(toolCalls) > 0 {
+	if hasCallerTools && len(toolCalls) > 0 {
 		var list []*toolCallObj
 		for i := 0; i < len(toolCalls); i++ {
 			if t, ok := toolCalls[i]; ok {
 				list = append(list, t)
 			}
 		}
-		msg["tool_calls"] = list
+		if len(list) > 0 {
+			msg["tool_calls"] = list
+		}
 	}
 
 	if resID == "" {
@@ -1806,7 +1942,15 @@ func assembleSSE(raw []byte, fallbackModel string) []byte {
 	return out
 }
 
+var (
+	streamEmitHook  func(streamID string, payload []byte) error
+	streamCloseHook func(streamID, errStr string)
+)
+
 func emitStream(streamID string, payload []byte) error {
+	if streamEmitHook != nil {
+		return streamEmitHook(streamID, payload)
+	}
 	req := streamEmit{StreamID: streamID, Payload: payload}
 	rawPayload, err := json.Marshal(req)
 	if err != nil {
@@ -1837,6 +1981,10 @@ func emitStream(streamID string, payload []byte) error {
 }
 
 func closeStream(streamID, errStr string) {
+	if streamCloseHook != nil {
+		streamCloseHook(streamID, errStr)
+		return
+	}
 	req := streamClose{StreamID: streamID, Error: errStr}
 	rawPayload, _ := json.Marshal(req)
 	cMethod := C.CString("host.stream.close")
