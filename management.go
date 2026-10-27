@@ -648,6 +648,7 @@ func handleStatusAPI() ([]byte, error) {
 			"zen_url":    getOpenCodeBaseURL(),
 			"latency_ms": sidecarMS,
 		},
+		"harness": HarnessInfo(),
 		"proxy_pool": map[string]any{
 			"configured": proxyConfigured,
 			"reachable":  proxyMS != "down",

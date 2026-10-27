@@ -1480,7 +1480,7 @@
       <p>Manage free models, provider connections, and account access <span class="version-inline mono" id="versionInline"></span></p>
     </div>
     <div class="topbar-actions">
-      <span class="status-pill mono" id="versionBadge">v1.4.0</span>
+      <span class="status-pill mono" id="versionBadge">v1.5.0</span>
       <button type="button" class="btn btn-ghost btn-icon" id="settingsBtn" onclick="openSettings()" title="Settings" aria-label="Settings">
         <svg class="icon" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="3"></circle>
@@ -1515,8 +1515,8 @@
       </div>
       <div class="telemetry-list">
         <div class="telemetry-cell">
-          <span class="telemetry-label">Sidecar :8789</span>
-          <span class="telemetry-val mono" id="teleSidecar">--</span>
+          <span class="telemetry-label">Native harness</span>
+          <span class="telemetry-val mono" id="teleHarness" title="The OpenCode bypass harness is compiled into the plugin binary — no external sidecar required.">--</span>
         </div>
         <div class="telemetry-cell">
           <span class="telemetry-label">Proxy :8127</span>
@@ -1920,13 +1920,17 @@
       }
 
       /* Telemetry */
-      const scEl = document.getElementById('teleSidecar');
-      if (data.sidecar && data.sidecar.zen_active) {
-        const ms = data.sidecar.latency_ms && data.sidecar.latency_ms !== 'down' ? data.sidecar.latency_ms + ' ms' : 'Up';
-        scEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${ms}`;
-      } else {
-        scEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
-      }
+      const hEl = document.getElementById('teleHarness');
+      const hInfo = data.harness || {};
+      let hText = 'Embedded';
+      const hDetails = [];
+      if (hInfo.preamble_bytes) hDetails.push((hInfo.preamble_bytes / 1024).toFixed(1) + ' KB preamble');
+      if (hInfo.tools) hDetails.push(hInfo.tools + ' tools');
+      if (hInfo.sessions != null) hDetails.push(hInfo.sessions + ' session' + (hInfo.sessions === 1 ? '' : 's') + ' cached');
+      if (data.sidecar && data.sidecar.zen_active) hDetails.push('optional sidecar :8789 attached');
+      hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${hText}`;
+      hEl.title = 'The OpenCode bypass harness is compiled into the plugin binary — no external sidecar required.'
+        + (hDetails.length ? ' (' + hDetails.join(', ') + ')' : '');
 
       const pxEl = document.getElementById('teleProxy');
       if (data.proxy_pool && data.proxy_pool.reachable) {
@@ -2467,19 +2471,15 @@
     try {
       const res = await fetch('api/proxy/ping');
       const data = await res.json();
-      const scEl = document.getElementById('teleSidecar');
-      if (data.sidecar_ms && data.sidecar_ms !== 'down') {
-        scEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.sidecar_ms} ms`;
-      } else {
-        scEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
-      }
+      const hEl = document.getElementById('teleHarness');
+      hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> Embedded · ok`;
       const pxEl = document.getElementById('teleProxy');
       if (data.proxy_ms && data.proxy_ms !== 'down') {
         pxEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.proxy_ms} ms`;
       } else {
         pxEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Down`;
       }
-      showToast(`Latensi diperbarui: Sidecar ${data.sidecar_ms}ms, Proxy ${data.proxy_ms}ms`);
+      showToast(`Latency updated: harness embedded, proxy ${data.proxy_ms === 'down' ? 'down' : data.proxy_ms + 'ms'}`);
     } catch (e) {
       showToast('Latency check failed: ' + e.message);
     } finally {
@@ -2570,7 +2570,7 @@
         chips.push(['Pool', eff.opencodePool.join(' → ')]);
       }
       if (eff.allowDatacenter) chips.push(['Datacenter', 'allowed']);
-      chips.push(['Sidecar', eff.sidecar || 'none']);
+      chips.push(['Harness', eff.sidecar ? `native + sidecar ${eff.sidecar}` : 'native']);
       chips.push(['OmniRush', eff.omnirushProxy || 'direct']);
       chips.push(['Timeout', (eff.headerTimeout || 120) + 's']);
       chips.push(['OmniRush', (eff.omnirushTimeout || 45) + 's' + (eff.omnirushReasoning ? ' · ' + eff.omnirushReasoning : '')]);
@@ -2819,9 +2819,9 @@
       </div>
 
       <div class="field">
-        <label class="field-label" for="setSidecar">Sidecar base URL</label>
+        <label class="field-label" for="setSidecar">Sidecar base URL (optional)</label>
         <input type="text" class="text-input mono" id="setSidecar" placeholder="auto (127.0.0.1:8789)" autocomplete="off" spellcheck="false">
-        <div class="field-hint">Empty probes <span class="mono">127.0.0.1:8789</span>, then falls back to <span class="mono">OPENCODE_BASE_URL</span>.</div>
+        <div class="field-hint">The native harness is compiled into the plugin — this is only an optional legacy accelerator. Empty probes <span class="mono">127.0.0.1:8789</span>, then falls back to <span class="mono">OPENCODE_BASE_URL</span>.</div>
       </div>
 
 

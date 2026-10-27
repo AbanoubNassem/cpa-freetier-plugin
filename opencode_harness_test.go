@@ -906,3 +906,17 @@ func TestOpenCodeConcurrentRaceSafety(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestHarnessInfoNative(t *testing.T) {
+	info := HarnessInfo()
+	if info["native"] != true {
+		t.Fatalf("expected native=true, got %v", info["native"])
+	}
+	pb, ok := info["preamble_bytes"].(int)
+	if !ok || pb != len(openCodeAgentPreamble) || pb == 0 {
+		t.Fatalf("preamble_bytes mismatch: %v", info["preamble_bytes"])
+	}
+	if info["session_ttl"].(int) != 30 {
+		t.Fatalf("expected session_ttl=30, got %v", info["session_ttl"])
+	}
+}

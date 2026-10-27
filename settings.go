@@ -91,10 +91,10 @@ func defaultPluginSettings() *PluginSettings {
 	return &PluginSettings{
 		Proxy: ProxySettings{},
 		Identity: IdentitySettings{
-			MimicCLI:     true,
-			UserAgent:    opencodeClientUA,
-			Client:       "cli",
-			Project:      getProjectHash(),
+			MimicCLI:  true,
+			UserAgent: opencodeClientUA,
+			Client:    "cli",
+			Project:   getProjectHash(),
 			// Empty means "auto": probe 127.0.0.1:8789, then fall back to env.
 			Sidecar:      "",
 			ReferralCode: defaultOmniReferralCode,

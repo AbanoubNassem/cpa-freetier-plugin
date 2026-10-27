@@ -99,7 +99,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.4.0"
+var pluginVersion = "1.5.0"
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 //

@@ -14,7 +14,9 @@ import (
 )
 
 //go:embed agent_preamble.txt
-var openCodeAgentPreamble string
+var openCodeAgentPreambleRaw string
+
+var openCodeAgentPreamble = strings.ReplaceAll(openCodeAgentPreambleRaw, "\r\n", "\n")
 
 //go:embed agent_tools.json
 var openCodeGateToolsJSON []byte
@@ -106,11 +108,11 @@ func getOfficialGateTools() []map[string]any {
 }
 
 // injectOpenCodeHarness injects the OpenCode bypass harness into payloadMap:
-// - Injects preamble into the first system message or prepends {role: "system", content: preamble}.
-// - Appends the 6 official tools (edit, glob, grep, read, shell, write) to tools, renaming any
-//   existing caller tools named read and shell to read_client and shell_client.
-// - If the caller provided NO tools originally, explicitly sets tool_choice: "none".
-// - Sets stream: true and stream_options: {"include_usage": true}.
+//   - Injects preamble into the first system message or prepends {role: "system", content: preamble}.
+//   - Appends the 6 official tools (edit, glob, grep, read, shell, write) to tools, renaming any
+//     existing caller tools named read and shell to read_client and shell_client.
+//   - If the caller provided NO tools originally, explicitly sets tool_choice: "none".
+//   - Sets stream: true and stream_options: {"include_usage": true}.
 func injectOpenCodeHarness(payloadMap map[string]any) {
 	if payloadMap == nil {
 		return
@@ -389,6 +391,25 @@ var harnessTools = map[string]bool{
 
 func isHarnessTool(name string) bool {
 	return harnessTools[strings.ToLower(strings.TrimSpace(name))]
+}
+
+// HarnessInfo reports the embedded native harness state for the management UI.
+// The harness is compiled into the plugin binary — no external sidecar is required.
+func HarnessInfo() map[string]any {
+	sessionMu.Lock()
+	sessions := len(cachedSessions)
+	sessionMu.Unlock()
+	tools := 0
+	for range officialGateTools {
+		tools++
+	}
+	return map[string]any{
+		"native":         true,
+		"preamble_bytes": len(openCodeAgentPreamble),
+		"tools":          tools,
+		"sessions":       sessions,
+		"session_ttl":    int(sessionTTL / time.Minute),
+	}
 }
 
 func isOfferedTool(name string, offered []string) bool {

@@ -1,0 +1,3 @@
+agent_preamble.txt text eol=lf
+agent_tools.json text eol=lf
+*.go text eol=lf
