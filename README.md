@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.5.1-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.5.2-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -11,7 +11,7 @@ A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) f
 
 ---
 
-## 🌟 Key Features (v1.5.1)
+## 🌟 Key Features (v1.5.2)
 
 * **Zero-Key & Auto-Registered:** Ready to use immediately. Automatically writes its provider auth descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) on `cliproxy_plugin_init`, `plugin.register`, and `plugin.reconfigure` unless disabled via `CPA_NO_AUTH_DESCRIPTOR=1`.
 * **Native Management Center Dashboard (`management_api`):**
@@ -116,7 +116,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.2/cpa-freetier-plugin_1.5.2_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -124,7 +124,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.2/cpa-freetier-plugin_1.5.2_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -132,7 +132,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.2/cpa-freetier-plugin_1.5.2_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -140,13 +140,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.2/cpa-freetier-plugin_1.5.2_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.5.1_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
+Extract `cpa-freetier-plugin_1.5.2_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
 
 #### Enable in `config.yaml` & Configure Descriptor
 Enable the plugin in CLIProxyAPI's `config.yaml`:
@@ -181,11 +181,12 @@ While **Kilo AI** models (`callKilo`) always connect directly through the host's
 ### 1. Endpoint Resolution (`getOpenCodeBaseURL`)
 On every OpenCode call, the plugin resolves the target endpoint in this exact order:
 1. **`OPENCODE_BASE_URL` environment variable:** If set, requests are sent to `<OPENCODE_BASE_URL>/inference/openai/v1/chat/completions`.
-2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`, optional legacy accelerator):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/inference/openai/v1/chat/completions`.
-3. **Default Upstream:** Otherwise, requests go directly to `https://opencode.ai/inference/openai/v1/chat/completions`.
+2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`, required for OpenCode):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/inference/openai/v1/chat/completions`.
+3. **Default Direct Upstream:** Otherwise, requests go directly to `https://opencode.ai/inference/openai/v1/chat/completions`.
 
-> **Native Harness (zero-sidecar, default since v1.5.1):**
-> The full v2 bypass — 8.2 KB agent preamble, gate tool manifest, W3C trace headers, timestamp-based session pool (30-minute TTL) and candidate failover — is **compiled directly into the plugin binary** (`opencode_harness.go`). No external Bun/sidecar process is needed: a single `.so`/`.dll` handles the v2 gate (`429 FreeUsageLimitError` / `403 FreeTierError`) on its own. A local [`zen-proxy`](https://github.com/12errh/zen-proxy) sidecar on `127.0.0.1:8789` remains an *optional* accelerator; when `targetURL` begins with `http://127.0.0.1` or `http://localhost`, the plugin automatically uses a direct local HTTP client (`getHTTPClient(false)`) so traffic to the local sidecar is never double-proxied through `OPENCODE_PROXY`, and local errors do not invalidate the outbound proxy cache.
+> **OpenCode Sidecar Architecture (v1.5.2):**
+> * **HTTP Layer (Native Go Harness):** The 8.2 KB agent preamble, official gate tools, W3C trace headers, SHA-1 project hashing, and candidate failovers are **compiled directly into the plugin binary** (`opencode_harness.go`).
+> * **TLS Layer (Bun Sidecar Bridge):** OpenCode's Cloudflare front-end strictly filters TLS ClientHello / JA3 fingerprints matching the official Bun-compiled CLI. Direct Go `crypto/tls` connections are rejected with `HTTP 429 FreeUsageLimitError`. Running [`zen-proxy`](https://github.com/12errh/zen-proxy) on `127.0.0.1:8789` provides the necessary BoringSSL TLS bridge to pass gate inspection. Kilo AI and OmniRush remain 100% native zero-dependency.
 
 ### 2. Outbound Egress & Proxy Selection (`getOpenCodeProxy`)
 When calling the remote `https://opencode.ai` upstream (`isLocal == false`), Cloudflare WAF blocks datacenter ASNs with `403 Forbidden` (`FreeTierError: OpenCode's free tier can only be used from within OpenCode`). The plugin selects outbound egress in this exact order:
@@ -280,7 +281,7 @@ Two verification scripts are included because catalogue presence does not guaran
 
 ---
 
-## 🔒 Architecture & Reliability Details (v1.5.1)
+## 🔒 Architecture & Reliability Details (v1.5.2)
 
 * **Bounded, Privacy-Safe Logging:** Request bodies are never written to disk; only payload byte length and an 8-byte SHA-256 hex fingerprint (`payloadFingerprint`) are logged. The log file (`0600`) rotates at `8 MiB` (`maxLogBytes`) with one `.1` backup.
 * **Per-Egress Connection Pooling:** `http.Transport` instances are cached process-wide per egress key (`MaxIdleConns: 128`, `MaxIdleConnsPerHost: 32`, `IdleConnTimeout: 90s`, `TLSHandshakeTimeout: 15s`, `ResponseHeaderTimeout: 120s`, `ExpectContinueTimeout: 1s`, `ForceAttemptHTTP2: false`). On remote transport errors, both the cached transport and proxy probe cache are invalidated immediately.

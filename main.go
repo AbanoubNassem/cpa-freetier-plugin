@@ -99,7 +99,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.5.1"
+var pluginVersion = "1.5.2"
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 //
@@ -1592,7 +1592,11 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 			_, _ = io.Copy(io.Discard, res.Body)
 			res.Body.Close()
 			bodyStr := strings.TrimSpace(string(b))
-			lastErr = fmt.Errorf("%s: %s", res.Status, bodyStr)
+			if res.StatusCode == 429 && baseURL == "" {
+				lastErr = fmt.Errorf("429 Too Many Requests: FreeUsageLimitError (Cloudflare blocks Go TLS; Bun sidecar on 127.0.0.1:8789 required for OpenCode)")
+			} else {
+				lastErr = fmt.Errorf("%s: %s", res.Status, bodyStr)
+			}
 
 			if isOpenCodeFallbackError(res.StatusCode, bodyStr) {
 				markModelUnhealthy(candidate, lastErr)

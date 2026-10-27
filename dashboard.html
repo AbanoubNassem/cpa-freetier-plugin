@@ -1480,7 +1480,7 @@
       <p>Manage free models, provider connections, and account access <span class="version-inline mono" id="versionInline"></span></p>
     </div>
     <div class="topbar-actions">
-      <span class="status-pill mono" id="versionBadge">v1.5.1</span>
+      <span class="status-pill mono" id="versionBadge">v1.5.2</span>
       <button type="button" class="btn btn-ghost btn-icon" id="settingsBtn" onclick="openSettings()" title="Settings" aria-label="Settings">
         <svg class="icon" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="3"></circle>
@@ -1515,8 +1515,8 @@
       </div>
       <div class="telemetry-list">
         <div class="telemetry-cell">
-          <span class="telemetry-label">Native harness</span>
-          <span class="telemetry-val mono" id="teleHarness" title="The OpenCode bypass harness is compiled into the plugin binary — no external sidecar required.">--</span>
+          <span class="telemetry-label">OpenCode sidecar</span>
+          <span class="telemetry-val mono" id="teleHarness" title="OpenCode free models require a Bun runtime sidecar (zen-proxy:8789) to pass Cloudflare TLS filtering.">--</span>
         </div>
         <div class="telemetry-cell">
           <span class="telemetry-label">Proxy pool</span>
@@ -1589,6 +1589,27 @@
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleImportDrawer()">Cancel</button>
             <button type="button" class="btn btn-primary btn-sm" id="btnSubmitImport" onclick="submitTokenImport()">Save credentials</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenCode sidecar status, shown only inside its own tab -->
+    <div class="panel" id="opencodeSidecarPanel" hidden>
+      <div class="panel-head">
+        <div class="panel-title">
+          <span>OpenCode TLS bridge</span>
+        </div>
+        <span id="opencodeSidecarPill" class="status-pill"><span class="dot"></span> Checking…</span>
+      </div>
+
+      <div class="account-summary">
+        <div class="account-meta">
+          <div class="account-primary" id="opencodeSidecarTitle">Checking sidecar…</div>
+          <div class="account-secondary mono" id="opencodeSidecarDesc">OpenCode free models require a Bun runtime sidecar (zen-proxy on :8789) due to upstream Cloudflare BoringSSL TLS filtering.</div>
+        </div>
+        <div class="account-actions">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openSettings()">Configure</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="runNetworkPing()">Test ping</button>
         </div>
       </div>
     </div>
@@ -1921,16 +1942,34 @@
 
       /* Telemetry */
       const hEl = document.getElementById('teleHarness');
-      const hInfo = data.harness || {};
-      let hText = 'Embedded';
-      const hDetails = [];
-      if (hInfo.preamble_bytes) hDetails.push((hInfo.preamble_bytes / 1024).toFixed(1) + ' KB preamble');
-      if (hInfo.tools) hDetails.push(hInfo.tools + ' tools');
-      if (hInfo.sessions != null) hDetails.push(hInfo.sessions + ' session' + (hInfo.sessions === 1 ? '' : 's') + ' cached');
-      if (data.sidecar && data.sidecar.zen_active) hDetails.push('optional sidecar :8789 attached');
-      hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${hText}`;
-      hEl.title = 'The OpenCode bypass harness is compiled into the plugin binary — no external sidecar required.'
-        + (hDetails.length ? ' (' + hDetails.join(', ') + ')' : '');
+      if (hEl) {
+        if (data.sidecar && data.sidecar.zen_active) {
+          const lat = data.sidecar.latency_ms && data.sidecar.latency_ms !== 'down' ? `${data.sidecar.latency_ms} ms` : 'Active';
+          hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> Bun · ${lat}`;
+          hEl.title = `Bun sidecar connected (${data.sidecar.zen_url || '127.0.0.1:8789'}). OpenCode traffic bridged through BoringSSL TLS.`;
+        } else {
+          hEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Needed`;
+          hEl.title = 'OpenCode sidecar not detected (:8789). Direct Go TLS is blocked with 429 by Cloudflare.';
+        }
+      }
+
+      /* OpenCode sidecar panel status */
+      const ocPill = document.getElementById('opencodeSidecarPill');
+      const ocTitle = document.getElementById('opencodeSidecarTitle');
+      const ocDesc = document.getElementById('opencodeSidecarDesc');
+      if (ocPill && ocTitle && ocDesc) {
+        if (data.sidecar && data.sidecar.zen_active) {
+          ocPill.className = 'status-pill ok';
+          ocPill.innerHTML = '<span class="dot"></span> Active';
+          ocTitle.textContent = `Bun Sidecar Active (${data.sidecar.zen_url || data.sidecar.zen_addr || '127.0.0.1:8789'})`;
+          ocDesc.textContent = 'All OpenCode inference requests are bridged through Bun BoringSSL TLS to pass Cloudflare gate filters.';
+        } else {
+          ocPill.className = 'status-pill warn';
+          ocPill.innerHTML = '<span class="dot"></span> Sidecar Required';
+          ocTitle.textContent = 'Sidecar Not Detected (127.0.0.1:8789)';
+          ocDesc.textContent = 'Direct Go TLS is blocked by Cloudflare with HTTP 429 FreeUsageLimitError. Run zen-proxy on :8789 or configure a sidecar URL in Settings.';
+        }
+      }
 
       const pxEl = document.getElementById('teleProxy');
       if (data.proxy_pool && data.proxy_pool.reachable) {
@@ -1973,11 +2012,12 @@
     renderModels();
   }
 
-  /* The OmniRush account block only matters next to its own models. */
+  /* Tab-specific control panels */
   function syncAccountPanel() {
-    const panel = document.getElementById('omniAccountPanel');
-    if (!panel) return;
-    panel.hidden = currentFilter !== 'omnirush';
+    const omni = document.getElementById('omniAccountPanel');
+    if (omni) omni.hidden = currentFilter !== 'omnirush';
+    const oc = document.getElementById('opencodeSidecarPanel');
+    if (oc) oc.hidden = currentFilter !== 'opencode';
   }
 
   function onSearchInput() {
@@ -2472,14 +2512,20 @@
       const res = await fetch('api/proxy/ping');
       const data = await res.json();
       const hEl = document.getElementById('teleHarness');
-      hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> Embedded · ok`;
+      if (hEl) {
+        if (data.sidecar_ms && data.sidecar_ms !== 'down') {
+          hEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> Bun · ${data.sidecar_ms} ms`;
+        } else {
+          hEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Needed`;
+        }
+      }
       const pxEl = document.getElementById('teleProxy');
       if (data.proxy_ms && data.proxy_ms !== 'down') {
         pxEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.proxy_ms} ms`;
       } else {
         pxEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
       }
-      showToast(`Latency updated: harness embedded, proxy ${data.proxy_ms === 'down' ? 'direct' : data.proxy_ms + 'ms'}`);
+      showToast(`Latency updated: sidecar ${data.sidecar_ms === 'down' ? 'down' : data.sidecar_ms + 'ms'}, proxy ${data.proxy_ms === 'down' ? 'direct' : data.proxy_ms + 'ms'}`);
     } catch (e) {
       showToast('Latency check failed: ' + e.message);
     } finally {
@@ -2570,7 +2616,7 @@
         chips.push(['Pool', eff.opencodePool.join(' → ')]);
       }
       if (eff.allowDatacenter) chips.push(['Datacenter', 'allowed']);
-      chips.push(['Harness', eff.sidecar ? `native + sidecar ${eff.sidecar}` : 'native']);
+      chips.push(['Sidecar', eff.sidecar ? eff.sidecar : 'auto (:8789)']);
       chips.push(['OmniRush', eff.omnirushProxy || 'direct']);
       chips.push(['Timeout', (eff.headerTimeout || 120) + 's']);
       chips.push(['OmniRush', (eff.omnirushTimeout || 45) + 's' + (eff.omnirushReasoning ? ' · ' + eff.omnirushReasoning : '')]);
@@ -2819,9 +2865,9 @@
       </div>
 
       <div class="field">
-        <label class="field-label" for="setSidecar">Sidecar base URL (optional)</label>
+        <label class="field-label" for="setSidecar">OpenCode Bun Sidecar URL</label>
         <input type="text" class="text-input mono" id="setSidecar" placeholder="auto (127.0.0.1:8789)" autocomplete="off" spellcheck="false">
-        <div class="field-hint">The native harness is compiled into the plugin — this is only an optional legacy accelerator. Empty probes <span class="mono">127.0.0.1:8789</span>, then falls back to <span class="mono">OPENCODE_BASE_URL</span>.</div>
+        <div class="field-hint">Required for OpenCode free tier due to Cloudflare BoringSSL TLS gate filtering. Leave empty to auto-probe <span class="mono">127.0.0.1:8789</span> (default zen-proxy), or enter custom URL (e.g. <span class="mono">http://192.168.1.100:8789</span>). Set to <span class="mono">-</span> to force direct Go (will hit 429).</div>
       </div>
 
 

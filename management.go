@@ -468,7 +468,7 @@ func handleManagementHandle(raw []byte) ([]byte, error) {
 
 	// 9. Ping Diagnostics
 	if strings.HasSuffix(path, "/proxy/ping") || strings.HasSuffix(path, "/api/proxy/ping") {
-		sidecarMS := pingTCP("127.0.0.1:8789")
+		_, sidecarMS, _ := probeSidecar()
 		proxyMS := firstPoolProbeAddr()
 		upstreamMS := pingTCP("100.119.217.33:8888")
 
@@ -566,8 +566,7 @@ func handleStatusAPI() ([]byte, error) {
 		savedAt = auth.SavedAt
 	}
 
-	sidecarMS := pingTCP("127.0.0.1:8789")
-	sidecarActive := sidecarMS != "down"
+	sidecarAddr, sidecarMS, sidecarActive := probeSidecar()
 
 	proxyMS := firstPoolProbeAddr()
 	proxyConfigured := getOpenCodeProxy() != nil || len(proxyPool("OPENCODE_PROXY_POOL", defaultOpenCodeProxies)) > 0
@@ -646,6 +645,7 @@ func handleStatusAPI() ([]byte, error) {
 		"sidecar": map[string]any{
 			"zen_active": sidecarActive,
 			"zen_url":    getOpenCodeBaseURL(),
+			"zen_addr":   sidecarAddr,
 			"latency_ms": sidecarMS,
 		},
 		"harness": HarnessInfo(),
@@ -752,6 +752,25 @@ func setModelExclusion(model string, exclude bool) error {
 // OpenCode pool (env override, settings file, or built-in defaults) so the
 // telemetry pings the egress the plugin actually uses — never a hardcoded port.
 // Returns "down" when no proxy is configured (direct egress).
+func probeSidecar() (string, string, bool) {
+	baseURL := getOpenCodeBaseURL()
+	addr := "127.0.0.1:8789"
+	if baseURL != "" {
+		if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+			addr = u.Host
+			if !strings.Contains(addr, ":") {
+				if u.Scheme == "https" {
+					addr += ":443"
+				} else {
+					addr += ":80"
+				}
+			}
+		}
+	}
+	ms := pingTCP(addr)
+	return addr, ms, ms != "down"
+}
+
 func firstPoolProbeAddr() string {
 	pool := proxyPool("OPENCODE_PROXY_POOL", defaultOpenCodeProxies)
 	if len(pool) == 0 {
