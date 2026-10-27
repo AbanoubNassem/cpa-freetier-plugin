@@ -158,13 +158,17 @@ func TestAssembleSSE(t *testing.T) {
 
 // ── model health ────────────────────────────────────────────────────────────
 
-// TestMain keeps unit tests off the real log destination.
+// TestMain keeps unit tests off the real log destination AND off the real
+// settings file: tests must be hermetic, so CPA_FREETIER_SETTINGS points at an
+// empty temp file (otherwise a host's saved proxy pool would leak into tests).
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "cpa-freetier-test")
 	if err != nil {
 		panic(err)
 	}
 	_ = os.Setenv("CPA_FREETIER_LOG", filepath.Join(dir, "plugin.log"))
+	_ = os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{}"), 0o600)
+	_ = os.Setenv("CPA_FREETIER_SETTINGS", filepath.Join(dir, "settings.json"))
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

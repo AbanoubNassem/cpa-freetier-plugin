@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/CLIProxyAPI-ABI%20v1%20Compliant-00ADD8?style=for-the-badge&logo=go" alt="CPA ABI v1" />
   <img src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Darwin%20%7C%20Windows-4A154B?style=for-the-badge" alt="Cross Platform" />
-  <img src="https://img.shields.io/badge/Release-v1.5.0-success?style=for-the-badge" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.5.1-success?style=for-the-badge" alt="Release" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License MIT" />
 </p>
 
@@ -11,14 +11,14 @@ A high-performance, native dynamic C ABI v1 plugin (`.so` / `.dylib` / `.dll`) f
 
 ---
 
-## 🌟 Key Features (v1.5.0)
+## 🌟 Key Features (v1.5.1)
 
 * **Zero-Key & Auto-Registered:** Ready to use immediately. Automatically writes its provider auth descriptor (`~/.cli-proxy-api/cpa-freetier-plugin.json`) on `cliproxy_plugin_init`, `plugin.register`, and `plugin.reconfigure` unless disabled via `CPA_NO_AUTH_DESCRIPTOR=1`.
 * **Native Management Center Dashboard (`management_api`):**
   * Registers directly into the CLIProxyAPI Management Center UI sidebar under **"Free Tier Plugin"** (`/v0/resource/plugins/cpa-freetier-plugin/dashboard`).
   * **1-Click OmniRush Device Flow:** Complete OAuth 2.0 Device Code Authorization directly in the browser; polls and stores rotated tokens to `~/.omnirush/auth.json` atomically with `0600` permissions.
   * **Interactive Model Fleet Manager:** Dynamically toggle active/excluded models on the fly; updates `excluded_models` in `cpa-freetier-plugin.json` without restarting CPA.
-  * **Network & Proxy Diagnostic Matrix:** Visual status indicators for the embedded native harness (preamble size, tool count, cached sessions), Residential proxy pool (`:8127`), and upstream latency pinging.
+  * **Network & Proxy Diagnostic Matrix:** Visual status indicators for the embedded native harness (preamble size, tool count, cached sessions), the configured proxy pool (direct when none is set), and upstream latency pinging.
 * **OmniRush Frontier Integration:**
   * Speaks the gateway's **OpenAI Responses API** (`POST https://omnirush.ai/omnirush/v1/responses`) and translates both directions: Chat Completions requests in, `response.output_text.delta` / `function_call` / `response.completed` SSE events back out as standard `chat.completion.chunk` frames (text, reasoning, tool calls and usage all preserved).
   * **Live model catalog:** the advertised OmniRush ids come from the account's own `GET /v1/models` (cached 10 minutes), so a model the gateway starts or stops serving needs no plugin release. Only ids the account can actually call are listed.
@@ -116,7 +116,7 @@ Download the verified platform package from [Releases](https://github.com/tsaQB/
 #### 🐧 Linux (x86_64 / amd64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.0/cpa-freetier-plugin_1.5.0_linux_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_linux_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -124,7 +124,7 @@ rm /tmp/plugin.zip
 #### 🐧 Linux (ARM64 / aarch64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.0/cpa-freetier-plugin_1.5.0_linux_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_linux_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -132,7 +132,7 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.0/cpa-freetier-plugin_1.5.0_darwin_arm64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_darwin_arm64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
@@ -140,13 +140,13 @@ rm /tmp/plugin.zip
 #### 🍏 macOS (Intel x86_64)
 ```bash
 mkdir -p ~/.cli-proxy-api/plugins
-curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.0/cpa-freetier-plugin_1.5.0_darwin_amd64.zip -o /tmp/plugin.zip
+curl -sL https://github.com/tsaQB/cpa-freetier-plugin/releases/download/v1.5.1/cpa-freetier-plugin_1.5.1_darwin_amd64.zip -o /tmp/plugin.zip
 unzip -o /tmp/plugin.zip -d ~/.cli-proxy-api/plugins/
 rm /tmp/plugin.zip
 ```
 
 #### 🪟 Windows (x86_64)
-Extract `cpa-freetier-plugin_1.5.0_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
+Extract `cpa-freetier-plugin_1.5.1_windows_amd64.zip` into your configured `plugins/` directory so that `cpa-freetier-plugin.dll` and `cpa-freetier-plugin.json` reside inside `plugins/`.
 
 #### Enable in `config.yaml` & Configure Descriptor
 Enable the plugin in CLIProxyAPI's `config.yaml`:
@@ -184,20 +184,20 @@ On every OpenCode call, the plugin resolves the target endpoint in this exact or
 2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`, optional legacy accelerator):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/inference/openai/v1/chat/completions`.
 3. **Default Upstream:** Otherwise, requests go directly to `https://opencode.ai/inference/openai/v1/chat/completions`.
 
-> **Native Harness (zero-sidecar, default since v1.5.0):**
+> **Native Harness (zero-sidecar, default since v1.5.1):**
 > The full v2 bypass — 8.2 KB agent preamble, gate tool manifest, W3C trace headers, timestamp-based session pool (30-minute TTL) and candidate failover — is **compiled directly into the plugin binary** (`opencode_harness.go`). No external Bun/sidecar process is needed: a single `.so`/`.dll` handles the v2 gate (`429 FreeUsageLimitError` / `403 FreeTierError`) on its own. A local [`zen-proxy`](https://github.com/12errh/zen-proxy) sidecar on `127.0.0.1:8789` remains an *optional* accelerator; when `targetURL` begins with `http://127.0.0.1` or `http://localhost`, the plugin automatically uses a direct local HTTP client (`getHTTPClient(false)`) so traffic to the local sidecar is never double-proxied through `OPENCODE_PROXY`, and local errors do not invalidate the outbound proxy cache.
 
 ### 2. Outbound Egress & Proxy Selection (`getOpenCodeProxy`)
 When calling the remote `https://opencode.ai` upstream (`isLocal == false`), Cloudflare WAF blocks datacenter ASNs with `403 Forbidden` (`FreeTierError: OpenCode's free tier can only be used from within OpenCode`). The plugin selects outbound egress in this exact order:
 1. **`OPENCODE_PROXY`:** Explicit proxy URL override (`http://`, `https://`, `socks5://`, `socks5h://`). Always wins if set.
-2. **`OPENCODE_PROXY_POOL`:** Comma-separated list of candidate proxies (`host:port` or full URL; bare `host:port` defaults to `http://`). Defaults to `127.0.0.1:8127`. Each candidate is tested via a `60ms` TCP dial, and the first reachable proxy is cached for `30s` (`proxyProbeTTL`).
+2. **`OPENCODE_PROXY_POOL`:** Comma-separated list of candidate proxies (`host:port` or full URL; bare `host:port` defaults to `http://`). Empty by default (direct egress). Each candidate is tested via a `60ms` TCP dial, and the first reachable proxy is cached for `30s` (`proxyProbeTTL`).
 3. **`OPENCODE_DATACENTER_PROXY_POOL` (Opt-in only):** Consulted **only** when `OPENCODE_ALLOW_DATACENTER` is enabled (`1`, `true`, `yes`, `on`). Defaults to `127.0.0.1:8123,127.0.0.1:8124,127.0.0.1:8125,127.0.0.1:8126`.
 4. **Ambient / Direct Network Fallback:** If no pool candidate is reachable (or `OPENCODE_PROXY_POOL=""`), the plugin falls back to `http.ProxyFromEnvironment` (respecting `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`, or connecting direct).
 
 ### 3. Quick Setup by Environment
 
 * **🏠 Laptop, Home PC, or Residential Broadband:**
-  Works 100% direct out-of-the-box. Since `127.0.0.1:8127` is not listening on a standard laptop, the 60ms probe fails and requests go direct over your residential IP. To disable the loopback probe entirely:
+  Works 100% direct out-of-the-box — no proxy is probed unless you configure one. To route through a local tunnel (for example a mobile/residential egress on `127.0.0.1:8127`):
   ```bash
   export OPENCODE_PROXY_POOL=""
   ```
@@ -236,7 +236,7 @@ environment variables below. Delete it, or press **Reset** in the sheet, to fall
 | :--- | :--- | :--- |
 | `OPENCODE_BASE_URL` | *(unset; auto-probes `127.0.0.1:8789`)* | Override the OpenCode base URL (appends `/inference/openai/v1/chat/completions`). If unset and `127.0.0.1:8789` is reachable within 50ms, uses `http://127.0.0.1:8789`; otherwise uses `https://opencode.ai`. |
 | `OPENCODE_PROXY` | *(unset)* | Explicit proxy URL for remote OpenCode calls (`http://`, `https://`, `socks5://`, `socks5h://`). Wins over the pools below. |
-| `OPENCODE_PROXY_POOL` | `127.0.0.1:8127` | Comma-separated `host:port` or proxy URLs probed in order (60ms dial timeout, cached 30s). Set to `""` (empty) to disable probing. |
+| `OPENCODE_PROXY_POOL` | *(empty — direct)* | Comma-separated `host:port` or proxy URLs probed in order (60ms dial timeout, cached 30s). Set to `""` (empty) to disable probing. |
 | `OPENCODE_ALLOW_DATACENTER` | `0` | Enable (`1`, `true`, `yes`, `on`) to allow falling back to `OPENCODE_DATACENTER_PROXY_POOL`. Off by default because OpenCode rejects datacenter ASNs with `403 FreeTierError`. |
 | `OPENCODE_DATACENTER_PROXY_POOL` | `127.0.0.1:8123,127.0.0.1:8124,127.0.0.1:8125,127.0.0.1:8126` | Datacenter proxy candidates probed only when `OPENCODE_ALLOW_DATACENTER` is enabled. |
 | `OMNIRUSH_AUTH_FILE` | `<home>/.omnirush/auth.json` | Explicit file path to stored OmniRush OAuth credentials. Also checks `<home>/.cli-proxy-api/omnirush-auth.json` as fallback. |
@@ -280,7 +280,7 @@ Two verification scripts are included because catalogue presence does not guaran
 
 ---
 
-## 🔒 Architecture & Reliability Details (v1.5.0)
+## 🔒 Architecture & Reliability Details (v1.5.1)
 
 * **Bounded, Privacy-Safe Logging:** Request bodies are never written to disk; only payload byte length and an 8-byte SHA-256 hex fingerprint (`payloadFingerprint`) are logged. The log file (`0600`) rotates at `8 MiB` (`maxLogBytes`) with one `.1` backup.
 * **Per-Egress Connection Pooling:** `http.Transport` instances are cached process-wide per egress key (`MaxIdleConns: 128`, `MaxIdleConnsPerHost: 32`, `IdleConnTimeout: 90s`, `TLSHandshakeTimeout: 15s`, `ResponseHeaderTimeout: 120s`, `ExpectContinueTimeout: 1s`, `ForceAttemptHTTP2: false`). On remote transport errors, both the cached transport and proxy probe cache are invalidated immediately.

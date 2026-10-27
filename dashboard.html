@@ -1480,7 +1480,7 @@
       <p>Manage free models, provider connections, and account access <span class="version-inline mono" id="versionInline"></span></p>
     </div>
     <div class="topbar-actions">
-      <span class="status-pill mono" id="versionBadge">v1.5.0</span>
+      <span class="status-pill mono" id="versionBadge">v1.5.1</span>
       <button type="button" class="btn btn-ghost btn-icon" id="settingsBtn" onclick="openSettings()" title="Settings" aria-label="Settings">
         <svg class="icon" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="3"></circle>
@@ -1519,7 +1519,7 @@
           <span class="telemetry-val mono" id="teleHarness" title="The OpenCode bypass harness is compiled into the plugin binary — no external sidecar required.">--</span>
         </div>
         <div class="telemetry-cell">
-          <span class="telemetry-label">Proxy :8127</span>
+          <span class="telemetry-label">Proxy pool</span>
           <span class="telemetry-val mono" id="teleProxy">--</span>
         </div>
         <div class="telemetry-cell">
@@ -2477,9 +2477,9 @@
       if (data.proxy_ms && data.proxy_ms !== 'down') {
         pxEl.innerHTML = `<span class="dot" style="color:var(--status-ok)"></span> ${data.proxy_ms} ms`;
       } else {
-        pxEl.innerHTML = `<span class="dot" style="color:var(--status-warn)"></span> Down`;
+        pxEl.innerHTML = `<span class="dot" style="color:var(--text-muted)"></span> Direct`;
       }
-      showToast(`Latency updated: harness embedded, proxy ${data.proxy_ms === 'down' ? 'down' : data.proxy_ms + 'ms'}`);
+      showToast(`Latency updated: harness embedded, proxy ${data.proxy_ms === 'down' ? 'direct' : data.proxy_ms + 'ms'}`);
     } catch (e) {
       showToast('Latency check failed: ' + e.message);
     } finally {

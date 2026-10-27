@@ -172,7 +172,12 @@ func loadPluginSettings() *PluginSettings {
 	cfg := defaultPluginSettings()
 	path := settingsPath()
 	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-		var parsed PluginSettings
+		// Start from the defaults and overlay the file on top: JSON has no
+		// notion of "unset", so unmarshalling into a zero struct would turn
+		// a partial file (or `{}`) into MimicCLI=false and empty timeouts —
+		// silently dropping the CLI disguise and hardening on every host
+		// whose settings file predates a new default field.
+		parsed := *cfg
 		if err := json.Unmarshal(data, &parsed); err == nil {
 			cfg = &parsed
 			settingsStamp = fmt.Sprintf("%d", len(data))

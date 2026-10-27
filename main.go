@@ -99,7 +99,7 @@ const (
 // pluginVersion is stamped at build time:
 // -ldflags "-X main.pluginVersion=$(VERSION)" — one source of truth instead of
 // hand-editing this file, plugin.json and the README on every release.
-var pluginVersion = "1.5.0"
+var pluginVersion = "1.5.1"
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 //
@@ -239,8 +239,13 @@ func payloadFingerprint(b []byte) string {
 // OpenCode free tier with 403 FreeTierError, so probing them by default would
 // only ever produce failures.
 var (
-	defaultOpenCodeProxies           = []string{"127.0.0.1:8127"} // mobile/residential tunnel
-	defaultOpenCodeDatacenterProxies = []string{"127.0.0.1:8123", "127.0.0.1:8124", "127.0.0.1:8125", "127.0.0.1:8126"}
+	// Defaults are intentionally EMPTY: the plugin ships to arbitrary hosts,
+	// so hardcoded tunnel ports (a host-specific convention) would only make
+	// every install probe phantom ports and fall back to direct anyway.
+	// Configure egress explicitly via OPENCODE_PROXY_POOL /
+	// OPENCODE_DATACENTER_PROXY_POOL or the dashboard settings panel.
+	defaultOpenCodeProxies           = []string{}
+	defaultOpenCodeDatacenterProxies = []string{}
 
 	proxyCacheMu   sync.Mutex
 	proxyCacheURL  *url.URL
