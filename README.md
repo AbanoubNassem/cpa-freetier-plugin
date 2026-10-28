@@ -180,9 +180,15 @@ While **Kilo AI** models (`callKilo`) always connect directly through the host's
 
 ### 1. Endpoint Resolution (`getOpenCodeBaseURL`)
 On every OpenCode call, the plugin resolves the target endpoint in this exact order:
-1. **`OPENCODE_BASE_URL` environment variable:** If set, requests are sent to `<OPENCODE_BASE_URL>/inference/openai/v1/chat/completions`.
-2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`, required for OpenCode):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/inference/openai/v1/chat/completions`.
+1. **`OPENCODE_BASE_URL` environment variable:** If set, requests are sent to `<OPENCODE_BASE_URL>/v1/chat/completions`, matching zen-proxy's OpenAI-compatible routes.
+2. **Local Sidecar Auto-Detection (`127.0.0.1:8789`, required for OpenCode):** If `OPENCODE_BASE_URL` is unset, the plugin dials `127.0.0.1:8789` with a `50ms` TCP timeout. If a listener answers, requests are routed to `http://127.0.0.1:8789/v1/chat/completions`.
 3. **Default Direct Upstream:** Otherwise, requests go directly to `https://opencode.ai/inference/openai/v1/chat/completions`.
+
+A reachable Bun sidecar does not guarantee anonymous free-tier access. OpenCode can still return `429 FreeUsageLimitError` through Bun. The plugin preserves the upstream status and message; an exhausted-allowance response stops model fallbacks, while temporary shared-pool cooldowns retain fallback behavior. See [issue #10](https://github.com/tsaQB/cpa-freetier-plugin/issues/10).
+
+CLIProxyAPI also has its own retry policy. To avoid additional host retry rounds, add `"request_retry": 0` to this plugin's auth descriptor in your configured `credentials.auth-dir`. Plugin and sidecar retry policies still apply. For a custom auth directory, set `CPA_AUTH_DIR` to that directory or place the descriptor there manually; a descriptor created only in `~/.cli-proxy-api` is not sufficient when CPA reads a different directory.
+
+zen-proxy can independently retry an exhausted allowance across every free model. This fork includes [`patches/zen-proxy-quota.patch`](patches/zen-proxy-quota.patch), verified against zen-proxy commit `3c6e11580eefa146732bcba9404d6d0280ce7e78`. Apply it with `git -C /path/to/zen-proxy apply /path/to/cpa-freetier-plugin/patches/zen-proxy-quota.patch`, run `bun test/quota-retries.mjs` from the zen-proxy directory, and restart the sidecar. It stops retries for an exhausted allowance while retaining retries for temporary shared-pool cooldowns and the existing explicit-key retry. It does not grant free-tier access or reset a quota.
 
 > **OpenCode Sidecar Architecture (v1.5.2):**
 > * **HTTP Layer (Native Go Harness):** The 8.2 KB agent preamble, official gate tools, W3C trace headers, SHA-1 project hashing, and candidate failovers are **compiled directly into the plugin binary** (`opencode_harness.go`).
@@ -235,7 +241,7 @@ environment variables below. Delete it, or press **Reset** in the sheet, to fall
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `OPENCODE_BASE_URL` | *(unset; auto-probes `127.0.0.1:8789`)* | Override the OpenCode base URL (appends `/inference/openai/v1/chat/completions`). If unset and `127.0.0.1:8789` is reachable within 50ms, uses `http://127.0.0.1:8789`; otherwise uses `https://opencode.ai`. |
+| `OPENCODE_BASE_URL` | *(unset; auto-probes `127.0.0.1:8789`)* | Override the OpenAI-compatible sidecar base URL (appends `/v1/chat/completions`). If unset and `127.0.0.1:8789` is reachable within 50ms, uses `http://127.0.0.1:8789`; otherwise calls OpenCode directly. |
 | `OPENCODE_PROXY` | *(unset)* | Explicit proxy URL for remote OpenCode calls (`http://`, `https://`, `socks5://`, `socks5h://`). Wins over the pools below. |
 | `OPENCODE_PROXY_POOL` | *(empty — direct)* | Comma-separated `host:port` or proxy URLs probed in order (60ms dial timeout, cached 30s). Set to `""` (empty) to disable probing. |
 | `OPENCODE_ALLOW_DATACENTER` | `0` | Enable (`1`, `true`, `yes`, `on`) to allow falling back to `OPENCODE_DATACENTER_PROXY_POOL`. Off by default because OpenCode rejects datacenter ASNs with `403 FreeTierError`. |

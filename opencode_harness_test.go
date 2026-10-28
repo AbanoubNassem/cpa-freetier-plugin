@@ -424,9 +424,9 @@ func TestCallOpenCodeCandidateFallback(t *testing.T) {
 
 		switch model {
 		case "mimo-v2.6-flash-free":
-			// First candidate fails with 429 FreeUsageLimitError
+			// A temporary shared-pool cooldown can recover on another model.
 			w.WriteHeader(http.StatusTooManyRequests)
-			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"FreeUsageLimitError","message":"Free usage limit reached. Subscribe to OpenCode Go to keep going"}}`))
+			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"FreeUsageLimitError","message":"Temporary shared-pool cooldown"}}`))
 		case "big-pickle":
 			// Second candidate fails with 400 Model is unavailable
 			w.WriteHeader(http.StatusBadRequest)

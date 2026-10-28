@@ -1171,7 +1171,7 @@ func execute(raw []byte) ([]byte, error) {
 	resp, err := callUpstream(req.Model, req.Payload, false)
 	if err != nil {
 		logMsg("execute callUpstream err: %v", err)
-		return errorEnvelope("upstream_error", err.Error(), 502), nil
+		return errorEnvelope("upstream_error", err.Error(), upstreamErrorStatus(err)), nil
 	}
 	defer resp.body.Close()
 
@@ -1515,7 +1515,7 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 	for _, candidate := range candidates {
 		targetURL := opencodeChatURL
 		if baseURL != "" {
-			targetURL = baseURL + "/inference/openai/v1/chat/completions"
+			targetURL = baseURL + "/v1/chat/completions"
 		} else if candidate == "muse-spark-1.3-contributor-free" || candidate == "muse-spark-1.2-contributor-free" {
 			targetURL = opencodeResponsesURL
 		}
@@ -1592,11 +1592,7 @@ func callOpenCode(model string, payload []byte, stream bool) (*upstreamResponse,
 			_, _ = io.Copy(io.Discard, res.Body)
 			res.Body.Close()
 			bodyStr := strings.TrimSpace(string(b))
-			if res.StatusCode == 429 && baseURL == "" {
-				lastErr = fmt.Errorf("429 Too Many Requests: FreeUsageLimitError (Cloudflare blocks Go TLS; Bun sidecar on 127.0.0.1:8789 required for OpenCode)")
-			} else {
-				lastErr = fmt.Errorf("%s: %s", res.Status, bodyStr)
-			}
+			lastErr = &upstreamHTTPError{status: res.StatusCode, message: fmt.Sprintf("%s: %s", res.Status, bodyStr)}
 
 			if isOpenCodeFallbackError(res.StatusCode, bodyStr) {
 				markModelUnhealthy(candidate, lastErr)

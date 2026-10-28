@@ -1,0 +1,73 @@
+--- a/zen-proxy.mjs
++++ b/zen-proxy.mjs
+@@ -624,2 +624,3 @@
+ function retryableUpstream(status, body) {
++  if (exhaustedFreeVerdict(status, body)) return false
+   if (status === 429 || status >= 500) return true
+@@ -641,2 +642,3 @@
+ function transientUpstream(status, body) {
++  if (exhaustedFreeVerdict(status, body)) return false
+   if (status === 429 || status >= 500) return true
+--- /dev/null
++++ b/test/quota-retries.mjs
+@@ -0,0 +1,60 @@
++import assert from "node:assert/strict"
++import http from "node:http"
++import { config, router } from "../zen-proxy.mjs"
++
++const original = { ...config }
++const quota = { error: { type: "FreeUsageLimitError", message: "Free usage limit reached. Subscribe to OpenCode Go to keep going." } }
++let calls = 0
++let mode = "quota"
++const upstream = http.createServer((req, res) => {
++  req.resume()
++  calls++
++  if (mode === "quota" || calls === 1) {
++    res.writeHead(429, { "content-type": "application/json" })
++    return res.end(JSON.stringify(mode === "quota" ? quota : { error: { type: "FreeUsageLimitError", message: "Temporary shared-pool cooldown" } }))
++  }
++  res.writeHead(200, { "content-type": "application/json" })
++  res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }] }))
++})
++const proxy = http.createServer(router)
++await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve))
++await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve))
++Object.assign(config, {
++  upstream: `http://127.0.0.1:${upstream.address().port}`,
++  fallbackModels: ["first-model", "second-model"],
++  modelAliases: {},
++  defaultModel: "",
++  defaultZenKey: "",
++  proxyKey: "",
++  retriesPerModel: 2,
++  retryBackoffMs: 1,
++})
++const request = () => fetch(`http://127.0.0.1:${proxy.address().port}/v1/chat/completions`, {
++  method: "POST",
++  headers: { "content-type": "application/json" },
++  body: JSON.stringify({ model: "first-model", messages: [{ role: "user", content: "Reply OK." }], stream: false }),
++})
++
++try {
++  const exhausted = await request()
++  assert.equal(exhausted.status, 429)
++  assert.deepEqual(await exhausted.json(), quota)
++  assert.equal(calls, 1, "Exhausted free quota must not retry or walk the model fallback chain")
++
++  mode = "temporary"
++  calls = 0
++  const recovered = await request()
++  assert.equal(recovered.status, 200)
++  assert.equal((await recovered.json()).choices[0].message.content, "OK")
++  assert.equal(calls, 2, "A temporary shared-pool cooldown must still be retried")
++  console.log("PASS: exhausted quota returns immediately; temporary limits still retry.")
++} catch (error) {
++  console.error(error.message)
++  process.exitCode = 1
++} finally {
++  Object.assign(config, original)
++  for (const server of [proxy, upstream]) {
++    server.closeAllConnections()
++    await new Promise((resolve) => server.close(resolve))
++  }
++}

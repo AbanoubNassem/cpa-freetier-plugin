@@ -333,6 +333,12 @@ func getOrCreateSession(key string) string {
 
 func isOpenCodeFallbackError(statusCode int, body string) bool {
 	if statusCode == 429 {
+		// An exhausted allowance applies across models; switching models cannot
+		// replenish it. Preserve fallbacks for temporary shared-pool cooldowns.
+		lower := strings.ToLower(body)
+		if strings.Contains(lower, "free usage limit reached") || strings.Contains(lower, "subscribe to opencode go") {
+			return false
+		}
 		return true
 	}
 	if strings.Contains(body, "FreeUsageLimitError") {
